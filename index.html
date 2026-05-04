@@ -250,8 +250,6 @@
                     </div>
                 </div>
 
-                <!-- Show/Hide panel toggle -->
-                <button id="visibilityToggleBtn" class="btn btn-vis" onclick="toggleVisibilityPanel()" title="Show / Hide chart elements">👁 Show/Hide</button>
             </div>
         </div>
 
@@ -275,9 +273,9 @@
             <div class="modal-body" style="display:grid; gap:14px;">
                 <div style="display:flex; align-items:center; gap:12px;">
                     <input type="range" id="progressSlider" min="0" max="100" step="5" value="0"
-                           style="flex:1; accent-color:#667eea;"
+                           style="flex:1; accent-color:#E60000;"
                            oninput="document.getElementById('progressValue').textContent = this.value + '%'">
-                    <span id="progressValue" style="font-weight:700; min-width:40px; color:#667eea;">0%</span>
+                    <span id="progressValue" style="font-weight:700; min-width:40px; color:#E60000;">0%</span>
                 </div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                     <button class="quick-pct-btn" onclick="document.getElementById('progressSlider').value=0; document.getElementById('progressValue').textContent='0%'">0%</button>
@@ -296,7 +294,7 @@
 
     <script src="main.js"></script>
     <script src="planner-import.js"></script>
-    <script src="visibility.js"></script>
+
 
     <template id="__bundler_thumbnail" data-bg-color="#dce1d6">
       <svg viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">

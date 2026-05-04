@@ -13,11 +13,6 @@ let previousGroupInputs = new Set();
 // Drag/resize state for task bars
 let taskDragState = null; // { type: 'move'|'resize', side?: 'left'|'right', taskId, startX, chartMin, chartMax, pxPerDay, origStart, origEnd, barEl, trackEl, trackRect }
 
-// ─── Visibility helpers (safe wrappers used before visibility.js loads) ──────
-function getVis(key) {
-    if (typeof getVisibility === 'function') return getVisibility(key);
-    return true; // default show everything
-}
 
 // Export a 16:9 PNG (1920x1080) with ALL tasks visible by vertically fitting content
 function saveChartForPPTFitAll() {
@@ -3133,12 +3128,10 @@ function createGroupBar(startDate, endDate, months, groupName) {
         }
     }
 
-    const showProg = getVis('showProgressBar');
-    const showLabel = getVis('showProgressLabel');
-    const progressHTML = (showProg && groupPct !== null) ? `
+    const progressHTML = groupPct !== null ? `
         <div class="bar-progress-fill" style="width:${groupPct}%; background: rgba(255,255,255,0.35);"></div>
     ` : '';
-    const labelHTML = (showLabel && groupPct !== null) ? `
+    const labelHTML = groupPct !== null ? `
         <span class="bar-pct-label">${groupPct}%</span>
     ` : '';
 
@@ -3201,48 +3194,36 @@ function createTaskRow(task, months) {
     }).join('');
 
     // ── Progress ──────────────────────────────────────────────────────────────
-    const showProg  = getVis('showProgressBar');
-    const showLabel = getVis('showProgressLabel');
-    const showSubs  = getVis('showSubtasks');
-
     // Resolve progress percentage
     let pct = typeof task.progress === 'number' ? task.progress : null;
     if (pct === null) {
-        // Derive from status
         if (task.status === 'Completed')       pct = 100;
         else if (task.status === 'Not Started') pct = 0;
     }
 
-    // Progress bar fill inside the task bar
-    const progressFillHTML = (showProg && pct !== null) ? `
+    const progressFillHTML = pct !== null ? `
         <div class="bar-progress-fill" style="width:${pct}%;"></div>
     ` : '';
 
-    // Percentage label inside the bar (only if bar is wide enough — handled via CSS min-width)
-    const pctLabelHTML = (showLabel && pct !== null) ? `
+    const pctLabelHTML = pct !== null ? `
         <span class="bar-pct-label">${pct}%</span>
     ` : '';
 
-    // Subtask badge in label panel
     const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
     const doneCount = subtasks.filter(s => s.done).length;
-    const subtaskBadge = (showSubs && subtasks.length > 0) ? `
+    const subtaskBadge = subtasks.length > 0 ? `
         <span class="subtask-badge" title="${doneCount}/${subtasks.length} subtasks done">
             ☑ ${doneCount}/${subtasks.length}
         </span>
     ` : '';
 
-    // Progress mini-bar below label text (shown when showProgressBar is on and we have subtasks or explicit pct)
-    const labelProgressHTML = (showProg && pct !== null) ? `
+    const labelProgressHTML = pct !== null ? `
         <div class="label-progress-track" title="${pct}% complete">
             <div class="label-progress-fill" style="width:${pct}%; background:${task.color};"></div>
         </div>
     ` : '';
 
-    // Status color strip visibility
-    const barBg = getVis('showStatusColor')
-        ? `background: linear-gradient(90deg, ${task.color} 0%, ${adjustBrightness(task.color, -25)} 100%);`
-        : `background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);`;
+    const barBg = `background: linear-gradient(90deg, ${task.color} 0%, ${adjustBrightness(task.color, -25)} 100%);`;
 
     const tooltipExtra = pct !== null ? ` — ${pct}% complete` : '';
     const subtaskTooltip = subtasks.length > 0 ? ` | ${doneCount}/${subtasks.length} subtasks` : '';
