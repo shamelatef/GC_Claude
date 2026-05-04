@@ -1,0 +1,392 @@
+
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shamel Atef - Gantt Chart</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Global modals mounted at body level to avoid being affected by container filters/scroll -->
+    <!-- Add Milestone Modal -->
+    <div class="modal-backdrop" id="addMilestoneModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addMilestoneTitle">
+            <h3 id="addMilestoneTitle">Add Milestone</h3>
+            <div class="modal-body" style="display:grid; gap:12px;">
+                <label style="display:grid; gap:6px;">
+                    <span>Milestone Name</span>
+                    <input type="text" id="addMilestoneName" placeholder="Enter milestone name" />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>Date</span>
+                    <input type="date" id="addMilestoneDate" />
+                </label>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeAddMilestoneModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmAddMilestoneModal()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Milestone Modal -->
+    <div class="modal-backdrop" id="editMilestoneModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editMilestoneTitle">
+            <h3 id="editMilestoneTitle">Edit Milestone</h3>
+            <div class="modal-body" style="display:grid; gap:12px;">
+                <label style="display:grid; gap:6px;">
+                    <span>Milestone Name</span>
+                    <input type="text" id="editMilestoneName" placeholder="Enter milestone name" />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>Date</span>
+                    <input type="date" id="editMilestoneDate" />
+                </label>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeEditMilestoneModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDeleteMilestone()" style="background:linear-gradient(45deg,#e74c3c,#c0392b); color:#fff;">Delete</button>
+                <button class="btn btn-primary" onclick="confirmEditMilestoneModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Project Modal -->
+    <div class="modal-backdrop" id="renameModal">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+            <h3 id="renameTitle">Rename Project</h3>
+            <div class="modal-body">
+                <input type="text" id="renameProjectInput" placeholder="Project name" />
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeRenameModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmRenameModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal (for task/group edits) -->
+    <div class="modal-backdrop" id="editModal" style="display: none;">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+            <h3 id="editTitle">Edit</h3>
+            <div class="modal-body">
+                <input type="text" id="editInput" placeholder="Enter value" />
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmEditModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Dates Modal -->
+    <div class="modal-backdrop" id="dateModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dateTitle">
+            <h3 id="dateTitle">Edit Task Dates</h3>
+            <div class="modal-body" style="display:grid; gap:12px;">
+                <label style="display:grid; gap:6px;">
+                    <span>Start Date</span>
+                    <input type="date" id="dateStartInput" />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>End Date</span>
+                    <input type="date" id="dateEndInput" />
+                </label>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeDateModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmDateModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Color Modal -->
+    <div class="modal-backdrop" id="colorModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="colorTitle">
+            <h3 id="colorTitle">Change Task Color</h3>
+            <div class="modal-body" style="display:grid; gap:12px;">
+                <div class="color-palette" id="colorPalette">
+                    <div class="palette-section">
+                        <div class="palette-title">Status Colors</div>
+                        <div class="swatches">
+                            <button class="swatch" data-color="#808080" style="--c:#808080" aria-label="Grey – Not Started"></button>
+                            <button class="swatch" data-color="#4C9141" style="--c:#4C9141" aria-label="May Green – In Progress"></button>
+                            <button class="swatch" data-color="#FFA500" style="--c:#FFA500" aria-label="Orange – Delayed"></button>
+                            <button class="swatch" data-color="#CC0000" style="--c:#CC0000" aria-label="Stafron Red – Blocked"></button>
+                            <button class="swatch" data-color="#4A0072" style="--c:#4A0072" aria-label="Purple – Action needed"></button>
+                            <button class="swatch" data-color="#00B4D8" style="--c:#00B4D8" aria-label="Blue – Completed"></button>
+                        </div>
+                    </div>
+                </div>
+                <input type="color" id="colorInput" style="display:none" />
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeColorModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmColorModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Task Modal -->
+    <div class="modal-backdrop" id="addTaskModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTaskTitle">
+            <h3 id="addTaskTitle">Add Activity</h3>
+            <div class="modal-body" style="display:grid; gap:12px;">
+                <label style="display:grid; gap:6px;">
+                    <span>Task Name</span>
+                    <input type="text" id="addTaskNameInput" placeholder="Enter task name" />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>Group</span>
+                    <input type="text" id="addTaskGroupName" readonly />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>Start Date</span>
+                    <input type="date" id="addTaskStartDate" />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>End Date</span>
+                    <input type="date" id="addTaskEndDate" />
+                </label>
+                <label style="display:grid; gap:6px;">
+                    <span>Status</span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="addTaskStatus">
+                            <option value="Not Started">Not Started</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Delayed">Delayed</option>
+                            <option value="Blocked">Blocked</option>
+                            <option value="Action Needed">Action Needed</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                        <div id="addTaskStatusChip" class="color-preview-chip" title="Status color"></div>
+                    </div>
+                </label>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeAddTaskModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmAddTaskModal()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>Dynamic Gantt Chart - Infrastructure</h1>
+            <p>BY AI & Shamel Radwan</p>
+            <div id="saveIndicator" style="margin-top: 10px; font-size: 0.9rem; font-weight: 600;">✓ All changes saved</div>
+        </div>
+
+        <div class="project-tabs" id="projectTabs"></div>
+        
+        <div class="controls">
+            <div class="form-group">
+                <label for="taskName">Activity</label>
+                <input type="text" id="taskName" placeholder="Enter Activity name">
+            </div>
+            <div class="form-group">
+                <label for="groupName">Sprint</label>
+                <div class="group-input-wrapper">
+                    <div id="groupGhost" class="group-ghost" aria-hidden="true"></div>
+                    <input type="text" id="groupName" placeholder="Enter Sprint name" list="groupSuggestions">
+                </div>
+                <datalist id="groupSuggestions"></datalist>
+                <div id="groupHint" class="input-hint" aria-live="polite">Press Tab to autocomplete</div>
+            </div>
+            <div class="form-group">
+                <label for="startDate">Start Date</label>
+                <input type="date" id="startDate">
+            </div>
+            <div class="form-group">
+                <label for="endDate">End Date</label>
+                <input type="date" id="endDate">
+            </div>
+            <div class="form-group">
+                <label for="taskStatus">Status</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select id="taskStatus">
+                        <option value="Not Started">Not Started</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Delayed">Delayed</option>
+                        <option value="Blocked">Blocked</option>
+                        <option value="Action Needed">Action Needed</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                    <div id="taskStatusChip" class="color-preview-chip" title="Status color"></div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="addTask()">Add Activity</button>
+                <button class="btn btn-tertiary" onclick="toggleAllGroups()">Collapse All</button>
+                <button class="btn btn-success" onclick="saveToFile()">Save File</button>
+                <button class="btn btn-info" onclick="document.getElementById('fileInput').click()">Load File</button>
+                <button class="btn btn-secondary" onclick="openAddMilestoneModal()">Add Milestone</button>
+
+                <!-- Overflow menu for less-frequent actions -->
+                <div class="kebab-menu" style="margin-left:auto;">
+                    <button class="btn" onclick="event.stopPropagation(); toggleKebabMenu(this)" aria-haspopup="true" aria-expanded="false">More ▾</button>
+                    <div class="kebab-dropdown" role="menu">
+                        <div class="kebab-item" role="menuitem" onclick="saveChartAsPNG(); this.closest('.kebab-dropdown')?.classList.remove('show');">
+                            <span class="kebab-item-icon">🖼️</span>
+                            <span>Save PNG</span>
+                        </div>
+                        <div class="kebab-item" role="menuitem" onclick="document.getElementById('plannerInput').click(); this.closest('.kebab-dropdown')?.classList.remove('show');">
+                            <span class="kebab-item-icon">📥</span>
+                            <span>Import from Planner (Excel)</span>
+                        </div>
+                        <div class="kebab-item" role="menuitem" onclick="document.getElementById('excelInput').click(); this.closest('.kebab-dropdown')?.classList.remove('show');">
+                            <span class="kebab-item-icon">⬇️</span>
+                            <span>Import CSV</span>
+                        </div>
+                        <div class="kebab-item" role="menuitem" onclick="exportCSV(); this.closest('.kebab-dropdown')?.classList.remove('show');">
+                            <span class="kebab-item-icon">📤</span>
+                            <span>Export CSV</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Show/Hide panel toggle -->
+                <button id="visibilityToggleBtn" class="btn btn-vis" onclick="toggleVisibilityPanel()" title="Show / Hide chart elements">👁 Show/Hide</button>
+            </div>
+        </div>
+
+        <input type="file" id="fileInput" class="file-input" accept=".json" onchange="loadFromFile(this)">
+        <input type="file" id="excelInput" class="file-input" accept=".xlsx,.csv" onchange="importFromExcel(this)">
+        <input type="file" id="plannerInput" class="file-input" accept=".xlsx,.csv,.xls" onchange="importFromPlanner(this)">
+
+        <div class="groups-list" id="groupsList" style="display:none" aria-hidden="true"></div>
+
+        <div class="chart-container">
+            <div class="chart" id="ganttChart">
+                <div class="no-tasks">Add Activities to see your Gantt chart</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div class="modal-backdrop" id="progressModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="progressModalTitle">
+            <h3 id="progressModalTitle">Set Progress</h3>
+            <div class="modal-body" style="display:grid; gap:14px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <input type="range" id="progressSlider" min="0" max="100" step="5" value="0"
+                           style="flex:1; accent-color:#667eea;"
+                           oninput="document.getElementById('progressValue').textContent = this.value + '%'">
+                    <span id="progressValue" style="font-weight:700; min-width:40px; color:#667eea;">0%</span>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="quick-pct-btn" onclick="document.getElementById('progressSlider').value=0; document.getElementById('progressValue').textContent='0%'">0%</button>
+                    <button class="quick-pct-btn" onclick="document.getElementById('progressSlider').value=25; document.getElementById('progressValue').textContent='25%'">25%</button>
+                    <button class="quick-pct-btn" onclick="document.getElementById('progressSlider').value=50; document.getElementById('progressValue').textContent='50%'">50%</button>
+                    <button class="quick-pct-btn" onclick="document.getElementById('progressSlider').value=75; document.getElementById('progressValue').textContent='75%'">75%</button>
+                    <button class="quick-pct-btn" onclick="document.getElementById('progressSlider').value=100; document.getElementById('progressValue').textContent='100%'">100%</button>
+                </div>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closeProgressModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmProgressModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+    <script src="planner-import.js"></script>
+    <script src="visibility.js"></script>
+
+    <template id="__bundler_thumbnail" data-bg-color="#dce1d6">
+      <svg viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg">
+        <!-- Background -->
+        <rect width="800" height="500" fill="#dce1d6"/>
+        <!-- Card -->
+        <rect x="40" y="40" width="720" height="420" rx="18" fill="white" opacity="0.95"/>
+        <!-- Title bar -->
+        <rect x="40" y="40" width="720" height="54" rx="18" fill="url(#titleGrad)"/>
+        <rect x="40" y="76" width="720" height="18" fill="url(#titleGrad)"/>
+        <defs>
+          <linearGradient id="titleGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#667eea"/>
+            <stop offset="100%" stop-color="#764ba2"/>
+          </linearGradient>
+          <linearGradient id="bar1" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#00B4D8"/>
+            <stop offset="100%" stop-color="#0077a8"/>
+          </linearGradient>
+          <linearGradient id="bar2" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#4C9141"/>
+            <stop offset="100%" stop-color="#2d6b25"/>
+          </linearGradient>
+          <linearGradient id="bar3" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#FFA500"/>
+            <stop offset="100%" stop-color="#cc7a00"/>
+          </linearGradient>
+          <linearGradient id="bar4" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#808080"/>
+            <stop offset="100%" stop-color="#555"/>
+          </linearGradient>
+        </defs>
+        <!-- Month header cells -->
+        <rect x="220" y="105" width="540" height="24" rx="4" fill="#f8f9fa"/>
+        <line x1="310" y1="105" x2="310" y2="129" stroke="#dee2e6" stroke-width="1"/>
+        <line x1="400" y1="105" x2="400" y2="129" stroke="#dee2e6" stroke-width="1"/>
+        <line x1="490" y1="105" x2="490" y2="129" stroke="#dee2e6" stroke-width="1"/>
+        <line x1="580" y1="105" x2="580" y2="129" stroke="#667eea" stroke-width="2" opacity="0.4"/>
+        <line x1="670" y1="105" x2="670" y2="129" stroke="#dee2e6" stroke-width="1"/>
+        <!-- Group header 1 -->
+        <rect x="60" y="140" width="700" height="28" rx="6" fill="#f0f4ff"/>
+        <rect x="60" y="140" width="8" height="28" rx="4" fill="#667eea"/>
+        <rect x="78" y="148" width="90" height="12" rx="4" fill="#667eea" opacity="0.6"/>
+        <!-- Task bar row 1 - completed (100%) -->
+        <rect x="60" y="178" width="155" height="22" rx="6" fill="#f8f9ff" stroke="#e0e6ff" stroke-width="1"/>
+        <rect x="220" y="180" width="200" height="18" rx="9" fill="url(#bar1)"/>
+        <rect x="220" y="180" width="200" height="18" rx="9" fill="rgba(255,255,255,0.3)"/>
+        <!-- progress label -->
+        <text x="310" y="193" text-anchor="middle" font-size="9" fill="white" font-weight="700">100%</text>
+        <!-- mini progress bar -->
+        <rect x="68" y="198" width="140" height="3" rx="2" fill="#e0e6ff"/>
+        <rect x="68" y="198" width="140" height="3" rx="2" fill="#00B4D8" opacity="0.6"/>
+        <!-- Task bar row 2 - in progress (65%) -->
+        <rect x="60" y="210" width="155" height="22" rx="6" fill="#f8f9ff" stroke="#e0e6ff" stroke-width="1"/>
+        <rect x="265" y="212" width="230" height="18" rx="9" fill="url(#bar2)"/>
+        <rect x="265" y="212" width="150" height="18" rx="9" fill="rgba(255,255,255,0.28)"/>
+        <text x="370" y="225" text-anchor="middle" font-size="9" fill="white" font-weight="700">65%</text>
+        <!-- subtask badge -->
+        <rect x="68" y="228" width="38" height="9" rx="4" fill="rgba(100,116,139,0.12)"/>
+        <text x="87" y="236" text-anchor="middle" font-size="7" fill="#64748b">☑ 1/2</text>
+        <!-- mini progress bar -->
+        <rect x="68" y="230" width="140" height="3" rx="2" fill="#e0e6ff"/>
+        <rect x="68" y="230" width="91" height="3" rx="2" fill="#4C9141" opacity="0.6"/>
+        <!-- Group header 2 -->
+        <rect x="60" y="250" width="700" height="28" rx="6" fill="#f0f4ff"/>
+        <rect x="60" y="250" width="8" height="28" rx="4" fill="#FFA500"/>
+        <rect x="78" y="258" width="90" height="12" rx="4" fill="#FFA500" opacity="0.5"/>
+        <!-- Task bar row 3 - delayed (30%) -->
+        <rect x="60" y="288" width="155" height="22" rx="6" fill="#f8f9ff" stroke="#e0e6ff" stroke-width="1"/>
+        <rect x="310" y="290" width="260" height="18" rx="9" fill="url(#bar3)"/>
+        <rect x="310" y="290" width="78" height="18" rx="9" fill="rgba(255,255,255,0.28)"/>
+        <text x="418" y="303" text-anchor="middle" font-size="9" fill="white" font-weight="700">30%</text>
+        <rect x="68" y="308" width="140" height="3" rx="2" fill="#e0e6ff"/>
+        <rect x="68" y="308" width="42" height="3" rx="2" fill="#FFA500" opacity="0.6"/>
+        <!-- Task bar row 4 - not started -->
+        <rect x="60" y="320" width="155" height="22" rx="6" fill="#f8f9ff" stroke="#e0e6ff" stroke-width="1"/>
+        <rect x="370" y="322" width="180" height="18" rx="9" fill="url(#bar4)"/>
+        <rect x="68" y="340" width="140" height="3" rx="2" fill="#e0e6ff"/>
+        <!-- Legend -->
+        <circle cx="230" cy="418" r="5" fill="#00B4D8"/>
+        <text x="240" y="422" font-size="9" fill="#64748b">Completed</text>
+        <circle cx="310" cy="418" r="5" fill="#4C9141"/>
+        <text x="320" y="422" font-size="9" fill="#64748b">In Progress</text>
+        <circle cx="400" cy="418" r="5" fill="#FFA500"/>
+        <text x="410" y="422" font-size="9" fill="#64748b">Delayed</text>
+        <circle cx="470" cy="418" r="5" fill="#CC0000"/>
+        <text x="480" y="422" font-size="9" fill="#64748b">Blocked</text>
+        <circle cx="535" cy="418" r="5" fill="#808080"/>
+        <text x="545" y="422" font-size="9" fill="#64748b">Not Started</text>
+      </svg>
+    </template>
+</body>
+</html>

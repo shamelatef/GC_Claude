@@ -1,0 +1,1651 @@
+.chart-group-label .kebab-icon,
+.task-label .kebab-icon {
+    /* Reset any gradient text clipping that might be inherited */
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+    -webkit-text-fill-color: initial !important;
+    color: #64748b;
+}
+
+/* Responsive: when label column shrinks to 180px, match overlay offset */
+@media (max-width: 768px) {
+  .milestones-overlay {
+    left: 180px; /* keep in sync with .chart-row/.chart-header grid-template-columns */
+  }
+}
+
+/* Make group/task labels anchor dropdowns without creating a stacking context */
+.chart-group-label,
+.task-label {
+    position: relative; /* anchor absolute dropdowns */
+    z-index: auto; /* avoid trapping dropdown inside lower stacking context */
+}
+
+/* Ensure following content doesn’t overlay on top of open menus */
+.chart-row,
+.chart-group {
+    position: relative;
+    z-index: 1;
+}
+
+/* When a kebab menu is open, raise the owner above neighbors and allow overflow */
+.chart-row.has-open-menu,
+.chart-group.has-open-menu {
+    z-index: 5;
+    overflow: visible;
+}
+
+/* Ensure default overflow won't clip dropdowns even without the class */
+.chart-row,
+.chart-group {
+    overflow: visible;
+}
+
+/* Align spacing to match task label paddings for visual vertical alignment */
+.chart-group-label { padding: 8px 12px; }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #dce1d6 0%, #ffffff 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1600px;
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.header h1 {
+    color: #2c3e50;
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.header p {
+    color: #7f8c8d;
+    font-size: 1.1rem;
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+    padding: 25px;
+    background: linear-gradient(135deg, #f8f9ff 0%, #e8f4fd 100%);
+    border-radius: 15px;
+    border: 2px solid rgba(102, 126, 234, 0.1);
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input, .form-group select {
+    padding: 12px;
+    border: 2px solid #e1e8ed;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+/* Red alert highlight for invalid inputs */
+.input-error {
+    border-color: #e53935 !important;
+    box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.15) !important;
+}
+
+/* Gentle attention pulse around an input */
+@keyframes attentionPulse {
+    0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.35); }
+    70% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+}
+.attention-pulse {
+    animation: attentionPulse 1.2s ease-out 0s 2;
+    border-color: #667eea !important;
+}
+
+.form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    transform: translateY(-2px);
+}
+
+.color-input {
+    width: 100%;
+    height: 45px;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    grid-column: 1 / -1;
+    margin-top: 20px;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 25px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+    flex: 1;
+}
+
+.btn:before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.3s, height 0.3s;
+}
+
+.btn:hover:before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn-primary {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+}
+
+.btn-secondary {
+    background: linear-gradient(45deg, #f093fb, #f5576c);
+    color: white;
+}
+
+.btn-tertiary {
+    background: linear-gradient(45deg, #4facfe, #00f2fe);
+    color: white;
+}
+
+.btn-success {
+    background: linear-gradient(45deg, #56ab2f, #a8e6cf);
+    color: white;
+}
+
+.btn-info {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+}
+
+.btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.groups-list {
+    margin-bottom: 20px;
+}
+
+.group-item {
+    margin-bottom: 15px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.group-header {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    background: linear-gradient(135deg, #f8f9ff, #e8f4fd);
+    border-left: 5px solid #667eea;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.group-header:hover {
+    background: linear-gradient(135deg, #e8f4fd, #d8ecfc);
+}
+
+.group-toggle {
+    font-size: 1.2rem;
+    margin-right: 10px;
+    color: #667eea;
+    font-weight: bold;
+    transition: transform 0.3s ease;
+}
+
+.group-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.group-name {
+    flex: 1;
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 1.1rem;
+}
+
+.group-stats {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    margin-left: 15px;
+}
+
+.group-edit-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: 10px;
+}
+
+.group-name-input, .group-color-input {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.group-name-input {
+    width: 150px;
+}
+
+.group-color-input {
+    width: 40px;
+    height: 30px;
+    padding: 0;
+    cursor: pointer;
+}
+
+.group-tasks {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.group-tasks.expanded {
+    max-height: 1000px;
+}
+
+.task-item {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    margin: 0 15px 10px 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid;
+    transition: all 0.3s ease;
+    cursor: move;
+}
+
+.task-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+.task-item.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+}
+
+.task-info {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 80px;
+    gap: 10px;
+    align-items: center;
+}
+
+.task-name {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+
+.task-dates {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.group-selector {
+    position: relative;
+}
+
+.group-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+}
+
+.delete-btn {
+    background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    margin-left: 15px;
+}
+
+.delete-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+}
+
+.chart-container {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    margin-top: 20px;
+    overflow: visible;
+}
+
+.chart {
+    position: relative;
+    width: 100%;
+}
+
+.chart-header {
+    display: grid;
+    grid-template-columns: 220px 1fr; /* align with .chart-row left column */
+    margin-bottom: 20px;
+    align-items: start;
+}
+
+.chart-title {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 1.1rem;
+    padding-top: 20px;
+    text-align: center;
+}
+
+.timeline-container {
+    position: relative;
+}
+
+.timeline-quarters {
+    display: flex;
+    border-bottom: 2px solid #ecf0f1;
+}
+
+.timeline-quarter {
+    flex: 1;
+    padding: 8px 4px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    border-left: none; /* lines are drawn by header grid overlay */
+    background: linear-gradient(to bottom, #f8f9fa, #e9ecef);
+    min-width: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-sizing: border-box; /* include border in width to keep lines aligned */
+}
+
+.timeline-quarter:first-child { border-left: none; }
+
+.quarter-year {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.quarter-name {
+    font-weight: 600;
+    color: #667eea;
+    font-size: 0.95rem;
+}
+
+.timeline-months {
+    display: flex;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.month-cell {
+    flex: 1;
+    padding: 6px 2px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: #6c757d;
+    background: linear-gradient(to bottom, #ffffff, #f8f9fa);
+    border-left: none; /* lines are drawn by header grid overlay */
+    min-width: 25px;
+    font-weight: 500;
+    box-sizing: border-box; /* include border in width to prevent drift */
+}
+
+.month-cell:first-child { border-left: none; }
+
+/* Ensure header rows use full width and align with body grid */
+.timeline-quarters,
+.timeline-months {
+    display: flex;
+    width: 100%;
+}
+
+.chart-body {
+    position: relative;
+}
+
+.chart-group {
+    margin-bottom: 10px;
+    cursor: move;
+}
+
+.chart-group.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+}
+
+.chart-group.drag-over {
+    background-color: rgba(102, 126, 234, 0.1);
+    border: 2px dashed #667eea;
+    border-radius: 10px;
+}
+
+.chart-group-header {
+    display: grid;
+    grid-template-columns: 220px 1fr; /* keep grid so timeline aligns with tasks */
+    align-items: center;
+    margin-bottom: 5px;
+    background: linear-gradient(135deg, #f0f4ff,rgb(139, 176, 240));
+    border-radius: 8px;
+    cursor: move;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.chart-group-header::before {
+    content: '⋮⋮';
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #667eea;
+    font-size: 1.2rem;
+    line-height: 0.8;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.chart-group-header:hover {
+    background: linear-gradient(135deg, #e8f0fe, #d8e8fd);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.chart-group-header:hover::before {
+    opacity: 1;
+}
+
+.chart-group-label {
+    padding: 12px 15px 12px 25px;
+    font-weight: 700;
+    color: #2c3e50; /* keep normal color on container */
+    display: flex;
+    align-items: center;
+    user-select: none;
+    overflow: visible; /* allow dropdown to escape label box */
+}
+
+/* Apply gradient text only to the name, not the whole label */
+.group-label-text {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    color: transparent;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chart-group-toggle {
+    font-size: 1rem;
+    margin-right: 8px;
+    transition: transform 0.3s ease;
+    color: #667eea;
+}
+
+.chart-group-toggle.collapsed {
+transform: rotate(-90deg);
+}
+
+/* Milestones overlay */
+.chart-body {
+  position: relative;
+}
+
+.milestones-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  /* Align overlay to the timeline column (exclude the left labels column) */
+  left: 220px; /* must match chart-row/chart-header left column width */
+  pointer-events: none; /* disabled by default; enable only on markers */
+  z-index: 4; /* above grid and bars, below menus */
+}
+
+.milestone-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: auto; /* allow clicking */
+}
+
+.milestone-line {
+  position: absolute;
+  top: 24px; /* below header titles within chart-body */
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-left: 2px dotted rgba(98,114,164,0.6);
+}
+
+/* Rectangular milestone badge at the bottom, to the right of the line */
+.milestone-badge {
+  position: absolute;
+  bottom: -18px; /* place below the last task bar (outside chart body) */
+  left: 50%; /* centered under the line */
+  transform: translateX(-50%);
+  display: inline-block;
+  background: #0c21e1; /* requested badge color */
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap; /* auto-size horizontally to text */
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 320px;
+  cursor: pointer;
+}
+
+/* Today marker (red, dotted) */
+.today-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none; /* purely visual */
+}
+.today-line {
+  position: absolute;
+  top: 24px; /* align with milestone lines start */
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-left: 2px dotted #e53935; /* red dotted */
+}
+
+.today-label {
+  position: absolute;
+  bottom: -28px; /* lower under the line */
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  line-height: 1;
+  color: #e53935;
+  font-weight: 700;
+  background: transparent;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* High-contrast theme tweaks if needed */
+@media (prefers-contrast: more) {
+  .milestone-line { border-left-color: rgba(60,60,60,0.9); border-left-style: dotted; }
+  .milestone-badge { background: #3a7bd5; }
+}
+
+.kebab-menu {
+    position: relative;
+    display: inline-block;
+    margin-left: auto;
+    padding: 0 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.kebab-icon {
+    font-size: 1.2em;
+    color: #64748b;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.kebab-icon:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.kebab-dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 160px;
+    z-index: 9999; /* ensure above rows */
+    display: none;
+    overflow: hidden;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.kebab-dropdown.show {
+    display: block;
+}
+
+.kebab-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #334155;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+}
+
+.kebab-item:hover {
+    background-color: #f1f5f9;
+}
+
+.kebab-item.danger {
+    color: #dc2626;
+}
+
+.kebab-item.danger:hover {
+    background-color: #fee2e2;
+}
+
+.kebab-item-icon {
+    width: 20px;
+    text-align: center;
+}
+
+/* Ensure we don't override grid layout on group header; just set sizing */
+.chart-group-header {
+    min-height: 35px; /* ensure space for timeline */
+}
+
+/* When expanded, use a single column and allow full name to show without ellipsis */
+.chart-group-header.expanded {
+    grid-template-columns: 1fr;
+}
+.chart-group-header.expanded .chart-group-label {
+    flex: 1 1 auto; /* override fixed 220px label width */
+}
+.chart-group-header.expanded .group-label-text {
+    overflow: visible;
+    text-overflow: initial;
+    white-space: nowrap; /* keep it on one line as requested */
+}
+
+.chart-group-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 220px; /* fixed label column like rows */
+}
+
+/* Right-align group kebab inside label to match task kebab alignment */
+.chart-group-label .kebab-menu { margin-left: auto; }
+
+/* Make collapsed group timeline use the timeline column exactly */
+.chart-group-timeline {
+    grid-column: 2 / 3; /* ensure it starts where tasks timeline starts */
+}
+
+/* Adjust task label for kebab menu */
+.task-label {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.task-label-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Allow up to two lines, then ellipsis */
+    display: -webkit-box;
+    line-clamp: 5; /* standard property for supporting engines */
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Hide old inline actions */
+.inline-actions {
+    display: none !important;
+}
+
+/* Hide kebab menus in exported PNGs */
+.export-mode .kebab-menu {
+    display: none !important;
+}
+
+/* Compact styles for PPT export: reduce vertical space so more rows fit */
+.ppt-export .task-label {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-left-width: 4px;
+    margin-bottom: 4px;
+}
+.ppt-export .task-label-text {
+    /* during export, clamp to 2 lines for compactness */
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
+}
+.ppt-export .chart-row {
+    min-height: 26px;
+    margin-bottom: 4px;
+}
+.ppt-export .timeline-track {
+    height: 18px;
+}
+.ppt-export .task-bar {
+    height: 18px;
+    font-size: 11px;
+}
+.ppt-export .group-bar {
+    height: 18px;
+}
+.ppt-export .chart-group-label {
+    padding: 6px 10px 6px 20px;
+}
+.ppt-export .group-label-text {
+    /* keep single line for groups during export */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chart-group-timeline {
+    position: relative;
+    flex: 1 1 auto; /* occupy remaining width */
+    height: 35px;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 8px;
+    overflow: hidden;
+    pointer-events: auto; /* allow interactions inside (group bars) */
+}
+
+.chart-group-tasks {
+    overflow: visible; /* allow bars/contents to render fully */
+    transition: max-height 0.3s ease;
+}
+
+.chart-group-tasks.collapsed {
+    max-height: 0;
+}
+
+.chart-row {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    align-items: center;
+    margin-bottom: 8px;
+    min-height: 35px;
+    transition: all 0.3s ease;
+    position: relative;
+    cursor: move;
+    border-radius: 6px;
+}
+
+.chart-row:hover {
+    background-color: rgba(102, 126, 234, 0.05);
+    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.1);
+}
+
+.chart-row.dragging {
+    opacity: 0.5;
+    transform: scale(0.95) rotate(2deg);
+}
+
+.chart-row.drag-over {
+    background-color: rgba(102, 126, 234, 0.1);
+    border: 2px dashed #667eea;
+    transform: translateY(-2px);
+}
+
+.drop-zone {
+    min-height: 20px;
+    transition: all 0.3s ease;
+    border-radius: 8px;
+}
+
+.drop-zone.drag-over {
+    background-color: rgba(102, 126, 234, 0.1);
+    border: 2px dashed #667eea;
+    transform: translateY(-2px);
+}
+
+.status-context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 180px;
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    border-radius: 10px;
+    padding: 6px;
+    backdrop-filter: blur(6px);
+}
+.status-context-menu .item {
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    outline: none;
+}
+.status-context-menu .item:hover {
+    background: rgba(102,126,234,0.08);
+}
+.status-context-menu .item:focus-visible {
+    outline: 2px solid rgba(102,126,234,0.4);
+    outline-offset: 2px;
+}
+.status-context-menu .chip {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--chip, #808080);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.08) inset;
+}
+.status-context-menu .label {
+    flex: 1 1 auto;
+}
+.status-context-menu .check {
+    color: #667eea;
+    opacity: 0;
+    transition: opacity .15s ease;
+}
+.status-context-menu .item.selected .check {
+    opacity: 1;
+}
+
+.task-label {
+    padding: 8px 12px;
+    font-weight: 500;
+    color: #2c3e50;
+    background: linear-gradient(135deg, #f8f9ff, #eef2ff);
+    border: 1px solid #e0e6ff;
+    border-left: 6px solid #667eea;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.inline-actions { 
+    margin-left: auto; 
+    display: flex; 
+    gap: 6px; 
+    align-items: center; 
+}
+
+.action-btn { 
+    border: none; 
+    background: transparent; 
+    color: #64748b; 
+    font-size: 12px; 
+    padding: 2px 6px; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    transition: background .15s ease, color .15s ease;
+}
+
+.action-btn:hover { 
+    background: #eef2ff; 
+    color: #374151; 
+}
+
+.action-danger { 
+    color: #c0392b; 
+}
+
+.action-danger:hover { 
+    background: #fdeaea; 
+    color: #a02d20; 
+}
+
+.action-color { 
+    width: 18px; 
+    height: 18px; 
+    padding: 0; 
+    border-radius: 4px; 
+    overflow: hidden; 
+    border: 1px solid #e0e6ff; 
+}
+
+.action-color input[type="color"] { 
+    appearance: none; 
+    -webkit-appearance: none; 
+    border: none; 
+    padding: 0; 
+    margin: 0; 
+    width: 18px; 
+    height: 18px; 
+    cursor: pointer; 
+    background: transparent;
+}
+
+.action-color input[type="color"]::-webkit-color-swatch-wrapper { 
+    padding: 0; 
+}
+
+.action-color input[type="color"]::-webkit-color-swatch { 
+    border: none; 
+    border-radius: 3px; 
+}
+
+.timeline-track {
+    position: relative;
+    height: 23px; /* match group-bar height */
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Month/Quarter vertical guides inside each timeline track */
+.timeline-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+.timeline-grid .vline,
+.timeline-grid .qline {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+}
+.timeline-grid .vline { border-left: 1px solid rgba(0,0,0,0.06); } /* lighter month guides */
+.timeline-grid .qline { border-left: 2px solid rgba(102,126,234,0.25); } /* lighter quarter guides */
+
+/* Ensure header grid appears above header backgrounds */
+.timeline-grid.header-grid {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.task-bar {
+    position: absolute;
+    top: 0;
+    height: 23px; /* match group-bar height */
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 12px;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
+    cursor: default;
+    z-index: 1; /* render over grid lines */
+}
+
+.task-bar:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Resize handles on task bars */
+.task-bar .resize-handle {
+    position: absolute;
+    top: 0;
+    width: 6px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.6);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.task-bar .resize-handle.left {
+    left: 0;
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+    cursor: ew-resize;
+}
+.task-bar .resize-handle.right {
+    right: 0;
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+    cursor: ew-resize;
+}
+.task-bar:hover .resize-handle {
+    opacity: 1;
+}
+.task-bar.resizing {
+    transition: none !important;
+    opacity: 0.9;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25), 0 4px 10px rgba(0,0,0,0.25);
+    outline: 2px dashed rgba(102, 126, 234, 0.6);
+    outline-offset: 2px;
+}
+
+.group-bar {
+    position: absolute;
+    top: 6px;
+    height: 23px;
+    border-radius: 12px;
+    opacity: 0.8;
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+    z-index: 6; /* above overlays like milestones-overlay (z=4) */
+    pointer-events: auto; /* ensure it receives right-clicks */
+}
+
+.no-tasks {
+    text-align: center;
+    padding: 60px 20px;
+    color: #bdc3c7;
+    font-size: 1.2rem;
+    font-style: italic;
+}
+
+.drop-zone {
+    min-height: 20px;
+    transition: all 0.3s ease;
+    border-radius: 8px;
+}
+
+.drop-zone.drag-over {
+    background-color: rgba(102, 126, 234, 0.1);
+    border: 2px dashed #667eea;
+}
+
+.file-input {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+        margin: 10px;
+    }
+
+    .controls {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+
+    .task-info {
+        grid-template-columns: 1fr;
+        gap: 5px;
+    }
+
+    .chart-row {
+        grid-template-columns: 180px 1fr;
+    }
+
+    .chart-header {
+        grid-template-columns: 180px 1fr;
+    }
+
+    .task-label {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+
+    .month-cell {
+        font-size: 0.65rem;
+        padding: 4px 1px;
+    }
+}
+
+/* Export adjustments: avoid gradient text turning into solid background in PNG */
+.export-mode .chart-group-label {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    -webkit-text-fill-color: initial !important;
+    background-clip: initial !important;
+    color: #2c3e50 !important;
+}
+/* Since gradient text is now applied on the inner span, reset it too during export */
+.export-mode .group-label-text {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    -webkit-text-fill-color: initial !important;
+    background-clip: initial !important;
+    color: #2c3e50 !important;
+}
+.export-mode .chart-group-header {
+    /* ensure header keeps subtle background without transparency issues */
+    background: linear-gradient(135deg, #f0f4ff, #e8f0fe) !important;
+}
+
+/* Hide edit/color/delete controls when exporting */
+.export-mode .inline-actions {
+    display: none !important;
+}
+
+/* Project tabs */
+.project-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 14px 0;
+    flex-wrap: wrap;
+}
+.project-tab {
+    background: #f1f5ff;
+    color: #2c3e50;
+    border: 1px solid #cfd8ff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.project-tab.active {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-color: transparent;
+}
+.project-tab .rename {
+    font-size: 12px;
+    opacity: 0.85;
+}
+.project-tab.add {
+    background: #eaf2ff;
+    border-style: dashed;
+}
+
+/* Delete (close) icon on project tab */
+.project-tab .delete {
+    font-size: 13px;
+    opacity: 0.7;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 4px;
+}
+.project-tab .delete:hover {
+    opacity: 1;
+    background: rgba(0,0,0,0.06);
+}
+
+/* Duplicate icon on project tab */
+.project-tab .duplicate {
+    font-size: 13px;
+    opacity: 0.8;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 4px;
+}
+.project-tab .duplicate:hover {
+    opacity: 1;
+    background: rgba(0,0,0,0.06);
+}
+
+/* Accessible focus states */
+.btn:focus-visible,
+.project-tab:focus-visible,
+.kebab-item:focus-visible,
+.kebab-icon:focus-visible {
+    outline: 3px solid rgba(102,126,234,0.45);
+    outline-offset: 2px;
+}
+
+/* Rename modal */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+    width: min(420px, 92vw);
+    padding: 20px;
+}
+.modal h3 {
+    margin-bottom: 10px;
+    color: #2c3e50;
+}
+.modal .modal-body {
+    margin: 10px 0 16px 0;
+}
+.modal input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cfd8ff;
+    border-radius: 8px;
+    outline: none;
+}
+.modal .actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+.btn-secondary-ghost {
+    background: #eef2ff;
+    color: #3b4cca;
+    border: 1px solid #cfd8ff;
+}
+/* Wrapper for inline ghost suggestion inside input */
+.group-input-wrapper {
+    position: relative;
+}
+.group-input-wrapper input[type="text"] {
+    position: relative;
+    background-color: transparent; /* ensure ghost can be seen under same background */
+}
+.group-ghost {
+    position: absolute;
+    inset: 0;
+    padding: 12px; /* match .form-group input padding */
+    box-sizing: border-box;
+    display: flex;
+    align-items: center; /* vertically align with input text */
+    height: 100%;
+    color: rgba(0,0,0,0.35);
+    font-weight: inherit; /* inherit to keep same metrics */
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    white-space: pre;
+    pointer-events: none;
+    user-select: none;
+    overflow: hidden;
+}
+.group-ghost .ghost-prefix { visibility: hidden; }
+.group-ghost .ghost-suffix { color: rgba(0,0,0,0.35); }
+/* Inline input hint for autocomplete */
+.input-hint {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: #667eea;
+    opacity: 0.9;
+    display: none;
+}
+.input-hint.show {
+    display: block;
+}
+
+/* Color palette (Word-like) */
+.color-palette {
+    display: grid;
+    gap: 12px;
+}
+.palette-title {
+    font-size: 0.85rem;
+    color: #475569;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.swatches {
+    display: grid;
+    grid-template-columns: repeat(10, 24px);
+    gap: 8px;
+}
+.swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: var(--c, #ffffff);
+    cursor: pointer;
+    padding: 0;
+    outline: none;
+}
+.swatch:hover {
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+.swatch.selected {
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.35);
+    border-color: #667eea;
+}
+.palette-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Small color preview chip used next to hidden color inputs */
+.color-preview-chip {
+    width: 36px;
+    height: 20px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #667eea;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROGRESS BARS
+═══════════════════════════════════════════════════════════ */
+
+/* Fill inside task/group bars */
+.bar-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: rgba(255,255,255,0.30);
+    pointer-events: none;
+    transition: width 0.35s ease;
+    z-index: 0;
+}
+
+/* Percentage label inside task/group bar */
+.bar-pct-label {
+    position: relative;
+    z-index: 2;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    pointer-events: none;
+    white-space: nowrap;
+    padding: 0 4px;
+    /* Only show when bar is wide enough */
+    overflow: hidden;
+}
+
+/* Make task-bar a flex container so label and fill coexist */
+.task-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.group-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* Label-panel mini progress track (thin line below task name) */
+.task-label-inner {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    gap: 3px;
+}
+.label-progress-track {
+    height: 3px;
+    background: rgba(102,126,234,0.15);
+    border-radius: 3px;
+    overflow: hidden;
+    width: 100%;
+}
+.label-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.35s ease;
+    opacity: 0.7;
+}
+
+/* Subtask badge */
+.subtask-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #64748b;
+    background: rgba(100,116,139,0.1);
+    border-radius: 10px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    align-self: flex-start;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STATUS LEGEND
+═══════════════════════════════════════════════════════════ */
+.status-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    margin-top: 18px;
+    padding: 10px 14px;
+    background: rgba(248,249,255,0.8);
+    border-radius: 10px;
+    border: 1px solid rgba(102,126,234,0.12);
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #475569;
+    font-weight: 500;
+}
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
+}
+.legend-text {
+    white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHOW / HIDE VISIBILITY PANEL
+═══════════════════════════════════════════════════════════ */
+.visibility-panel {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    z-index: 3000;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.08);
+    min-width: 240px;
+    overflow: hidden;
+    animation: vpFadeIn 0.15s ease;
+}
+@keyframes vpFadeIn {
+    from { opacity:0; transform: translateY(6px); }
+    to   { opacity:1; transform: translateY(0); }
+}
+.vp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.vp-title {
+    font-weight: 700;
+    font-size: 14px;
+    color: #1e293b;
+}
+.vp-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: #94a3b8;
+    padding: 2px 6px;
+    border-radius: 6px;
+    line-height: 1;
+}
+.vp-close:hover { background:#f1f5f9; color:#334155; }
+.vp-body {
+    padding: 8px 0;
+}
+.vp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.vp-row:hover { background: #f8fafc; }
+.vp-icon { font-size: 14px; width: 18px; text-align:center; }
+.vp-label { flex: 1; font-size: 13px; color: #334155; font-weight: 500; }
+.vp-toggle {
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+.vp-toggle.on  { background: #667eea; }
+.vp-toggle.off { background: #cbd5e1; }
+.vp-knob {
+    position: absolute;
+    top: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: left 0.2s;
+}
+.vp-toggle.on  .vp-knob { left: 18px; }
+.vp-toggle.off .vp-knob { left: 3px; }
+.vp-footer {
+    padding: 8px 16px 12px;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: flex-end;
+}
+.vp-reset {
+    background: none;
+    border: none;
+    font-size: 12px;
+    color: #667eea;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+.vp-reset:hover { background: #eef2ff; }
+
+/* Visibility button */
+.btn-vis {
+    background: linear-gradient(45deg, #f0f4ff, #e8f0fe);
+    color: #667eea;
+    border: 1px solid #c7d2fe;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.btn-vis:hover {
+    background: linear-gradient(45deg, #e8f0fe, #dde6fd);
+    box-shadow: 0 4px 12px rgba(102,126,234,0.2);
+}
+
+/* Ensure button group is relative for panel positioning */
+.button-group {
+    position: relative;
+}
+
+/* Quick pct buttons in progress modal */
+.quick-pct-btn {
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid #c7d2fe;
+    background: #f0f4ff;
+    color: #667eea;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.quick-pct-btn:hover {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+}
