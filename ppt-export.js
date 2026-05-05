@@ -1,63 +1,68 @@
 /**
- * Export Gantt Chart to PowerPoint (.pptx)
+ * Export Gantt Chart to PowerPoint (.pptx) — Swimlane layout
  *
- * Slide structure:
- *   • 1+ Summary slides  — one row per group (auto-paginated)
- *   • 1+ Detail slides   — one row per task within each group (auto-paginated)
+ * Structure:
+ *   - Each GROUP becomes a horizontal swimlane row (label on left, task bars inside)
+ *   - TASKS within a group stack vertically as coloured bars in the timeline
+ *   - task.subtasks checklist items are ignored (task-level only)
+ *   - If there is only one group OR all tasks share the same group name, the left
+ *     label column is hidden and bars span the full width
+ *   - Slides are auto-paginated: groups are split across slides when they won't fit
  *
- * Requires PptxGenJS loaded on the page.
+ * Requires PptxGenJS (pptxgen.bundle.js) loaded on the page.
  */
 function exportToPPT() {
     if (!tasks || tasks.length === 0) {
         showNotification('No tasks to export', 'error');
         return;
     }
-
     showNotification('Building PPTX…', 'info');
 
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_WIDE'; // 13.33" × 7.5"
 
     // ── Palette ──────────────────────────────────────────────────────────
-    const BG      = '1A1A1A';
-    const TITLE_B = 'E60000';
-    const HDR_BG  = '252525';
-    const ODD_BG  = '222222';
-    const GRID_M  = '323232';
-    const GRID_Q  = '7A0000';
-    const TODAY_C = 'FF4444';
-    const TXT_W   = 'FFFFFF';
-    const TXT_DIM = '777777';
-    const TXT_MUT = '3D3D3D';
+    const BG       = 'FFFFFF';
+    const TITLE_BG = 'E60000';
+    const HDR_BG   = '1F2937';   // dark navy month-header bar
+    const LANE_BG2 = 'F5F5F5';   // alternating swimlane stripe
+    const LANE_BG1 = 'FFFFFF';
+    const BORDER   = 'DEDEDE';
+    const GRID_M   = 'E8E8E8';
+    const GRID_Q   = 'CCCCCC';
+    const TODAY_C  = 'E60000';
+    const TXT_W    = 'FFFFFF';
+    const TXT_D    = '1A1A1A';
+    const TXT_MUT  = '999999';
 
     // ── Layout (inches) ──────────────────────────────────────────────────
     const W        = 13.33;
     const H        = 7.5;
-    const LW       = 2.4;          // label column width
-    const TX       = LW;            // timeline x origin
-    const TW       = W - TX - 0.05; // timeline width
-    const TITLE_H  = 0.45;
-    const HDR_Y    = 0.50;
-    const HDR_H    = 0.30;
-    const ROW_Y0   = HDR_Y + HDR_H + 0.05;
-    const ROW_H    = 0.34;
-    const BAR_H    = 0.22;
-    const BAR_VPAD = (ROW_H - BAR_H) / 2;
-    const FOOTER_H = 0.26;
-    // Reserve row 0 on detail slides for group summary; tasks fill rows 1..N
-    const ROWS_PER_SLIDE = 14;
+    const TITLE_H  = 0.42;
+    const QTR_Y    = TITLE_H + 0.05;   // quarter-label row
+    const QTR_H    = 0.24;
+    const HDR_Y    = QTR_Y + QTR_H;    // month-bar top
+    const HDR_H    = 0.34;
+    const ROW_Y0   = HDR_Y + HDR_H;    // first swimlane top
+    const BAR_H    = 0.21;
+    const BAR_GAP  = 0.05;
+    const ROW_PAD  = 0.08;             // vertical padding inside each swimlane
+    const FOOTER_H = 0.22;
+    const AVAIL_H  = H - ROW_Y0 - FOOTER_H - 0.02;
+
+    // ── Determine whether to show the left label column ──────────────────
+    const activeGroupNames = (groupOrder.length ? groupOrder : Object.keys(groups))
+        .filter(g => tasks.some(t => t.group === g));
+    const showLabels = activeGroupNames.length > 1;
+    const LW = showLabels ? 1.75 : 0;
+    const TX = LW;
+    const TW = W - TX - 0.04;
 
     // ── Timeline bounds ──────────────────────────────────────────────────
-    const taskDates = tasks
-        .flatMap(t => [parseYMD(t.startDate), parseYMD(t.endDate)])
-        .filter(Boolean);
-    const msDates = (milestones || []).map(m => parseYMD(m.date)).filter(Boolean);
-    const allDates = [...taskDates, ...msDates];
-
-    if (!allDates.length) {
-        showNotification('No date data to export', 'error');
-        return;
-    }
+    const taskDates = tasks.flatMap(t => [parseYMD(t.startDate), parseYMD(t.endDate)]).filter(Boolean);
+    const msDates   = (milestones || []).map(m => parseYMD(m.date)).filter(Boolean);
+    const allDates  = [...taskDates, ...msDates];
+    if (!allDates.length) { showNotification('No date data to export', 'error'); return; }
 
     const minDate  = new Date(Math.min(...allDates));
     const maxDate  = new Date(Math.max(...allDates));
@@ -66,10 +71,7 @@ function exportToPPT() {
     const totalM   = months.length;
     const projName = projects[activeProjectIndex]?.name || 'Gantt Chart';
 
-    const orderedGroups = (groupOrder.length ? groupOrder : Object.keys(groups))
-        .filter(g => tasks.some(t => t.group === g));
-
-    // ── Date → x position on the timeline ───────────────────────────────
+    // ── Date → x position in the timeline ───────────────────────────────
     function dToX(raw) {
         const d = (raw instanceof Date) ? raw : parseYMD(raw);
         if (!d) return null;
@@ -80,114 +82,151 @@ function exportToPPT() {
         return TX + ((idx + (day - 1) / daysInMo) / totalM) * TW;
     }
 
-    // ── Compute group-level summary (start, end, avg progress) ──────────
-    function groupSummary(gName) {
-        const gt = tasks.filter(t => t.group === gName);
-        if (!gt.length) return null;
-        const dates = gt.flatMap(t => [parseYMD(t.startDate), parseYMD(t.endDate)]).filter(Boolean);
-        const gStart = new Date(Math.min(...dates));
-        const gEnd   = new Date(Math.max(...dates));
-        const withProg = gt.filter(t => typeof t.progress === 'number');
-        const gPct = withProg.length
-            ? Math.round(withProg.reduce((s, t) => s + t.progress, 0) / withProg.length)
-            : Math.round(gt.filter(t => t.status === 'Completed').length / gt.length * 100);
-        return { gStart, gEnd, gPct, count: gt.length };
+    // ── Row height for a swimlane based on its task count ────────────────
+    function rowH(n) {
+        return Math.max(0.52, ROW_PAD * 2 + n * (BAR_H + BAR_GAP) - BAR_GAP);
     }
 
-    // ── Draw slide chrome (bg, title bar, timeline header, grid, footer) ─
-    function chrome(slide, title, subtitle) {
-        const gridBottom = H - FOOTER_H - 0.04;
+    // ── Paginate groups so each slide fits within available height ────────
+    function paginate() {
+        const pages = [];
+        let page = [], used = 0;
+        for (const g of activeGroupNames) {
+            const n  = tasks.filter(t => t.group === g).length;
+            const rh = rowH(n);
+            if (used + rh > AVAIL_H && page.length > 0) {
+                pages.push(page);
+                page = [g];
+                used = rh;
+            } else {
+                page.push(g);
+                used += rh;
+            }
+        }
+        if (page.length) pages.push(page);
+        return pages;
+    }
 
-        // Background
+    // ── Draw slide chrome ─────────────────────────────────────────────────
+    function chrome(slide, pageLabel) {
+        const contentBottom = H - FOOTER_H;
+
+        // White background
         slide.addShape(pptx.shapes.RECTANGLE, {
             x: 0, y: 0, w: W, h: H,
             fill: { color: BG }, line: { color: BG }
         });
 
-        // Title bar
+        // VOIS Red title bar
         slide.addShape(pptx.shapes.RECTANGLE, {
             x: 0, y: 0, w: W, h: TITLE_H,
-            fill: { color: TITLE_B }, line: { color: TITLE_B }
+            fill: { color: TITLE_BG }, line: { color: TITLE_BG }
         });
         slide.addText(projName, {
-            x: 0.16, y: 0, w: 7, h: TITLE_H,
-            fontSize: 15, bold: true, color: TXT_W, fontFace: 'Segoe UI', valign: 'middle'
+            x: 0.15, y: 0, w: 8.5, h: TITLE_H,
+            fontSize: 16, bold: true, color: TXT_W, fontFace: 'Segoe UI', valign: 'middle'
         });
-        slide.addText(title, {
-            x: 7.2, y: 0, w: W - 7.2 - 0.1, h: TITLE_H,
-            fontSize: 12, color: 'FFBBBB', fontFace: 'Segoe UI', valign: 'middle', align: 'right'
+        if (pageLabel) {
+            slide.addText(pageLabel, {
+                x: 8.7, y: 0, w: W - 8.7 - 0.1, h: TITLE_H,
+                fontSize: 10, color: 'FFBBBB', fontFace: 'Segoe UI', valign: 'middle', align: 'right'
+            });
+        }
+
+        // Quarter labels row (light grey text above the month bar)
+        qGroups.forEach((q, qi) => {
+            const startIdx = months.findIndex(m =>
+                m.year === q.months[0].year && m.month === q.months[0].month
+            );
+            if (startIdx < 0) return;
+            const qx = TX + (startIdx / totalM) * TW;
+            const qw = (q.months.length / totalM) * TW;
+
+            // Quarter label text
+            slide.addText(`${q.fyLabel}  Q${q.quarter}`, {
+                x: qx + 0.03, y: QTR_Y, w: qw - 0.06, h: QTR_H,
+                fontSize: 7, bold: true, color: '888888',
+                fontFace: 'Segoe UI', valign: 'middle'
+            });
+
+            // Dashed quarter boundary line down through the content
+            if (qi > 0) {
+                slide.addShape(pptx.shapes.LINE, {
+                    x: qx, y: QTR_Y, w: 0, h: contentBottom - QTR_Y,
+                    line: { color: GRID_Q, width: 0.8, dashType: 'lgDash' }
+                });
+            }
         });
 
-        // Timeline header background
+        // Label column header (dark box, same height as month bar)
+        if (showLabels) {
+            slide.addShape(pptx.shapes.RECTANGLE, {
+                x: 0, y: HDR_Y, w: LW, h: HDR_H,
+                fill: { color: '2D2D2D' }, line: { color: '2D2D2D' }
+            });
+            slide.addText('Sprint / Group', {
+                x: 0.1, y: HDR_Y, w: LW - 0.15, h: HDR_H,
+                fontSize: 8, bold: true, color: TXT_W, fontFace: 'Segoe UI', valign: 'middle'
+            });
+        }
+
+        // Month header bar (dark navy)
         slide.addShape(pptx.shapes.RECTANGLE, {
-            x: 0, y: HDR_Y, w: W, h: HDR_H,
+            x: TX, y: HDR_Y, w: TW, h: HDR_H,
             fill: { color: HDR_BG }, line: { color: HDR_BG }
         });
 
-        // Header label column text
-        if (subtitle) {
-            slide.addText(subtitle, {
-                x: 0.1, y: HDR_Y, w: LW - 0.15, h: HDR_H,
-                fontSize: 7.5, color: TXT_DIM, fontFace: 'Segoe UI', valign: 'middle'
-            });
-        }
-
-        // Quarter labels (top half of header)
-        qGroups.forEach(q => {
-            const qi = months.findIndex(m => m.year === q.months[0].year && m.month === q.months[0].month);
-            if (qi < 0) return;
-            const qx = TX + (qi / totalM) * TW;
-            const qw = (q.months.length / totalM) * TW;
-            slide.addText(`${q.fyLabel}  Q${q.quarter}`, {
-                x: qx + 0.03, y: HDR_Y, w: qw - 0.06, h: HDR_H * 0.55,
-                fontSize: 6.5, bold: true, color: 'FF6666', fontFace: 'Segoe UI', valign: 'middle'
-            });
-        });
-
-        // Month labels (bottom half of header)
+        // Month name labels + highlight today's month
         months.forEach((m, i) => {
             const mx = TX + (i / totalM) * TW;
             const mw = (1 / totalM) * TW;
+            const isNow = new Date().getMonth() + 1 === m.month && new Date().getFullYear() === m.year;
+            if (isNow) {
+                slide.addShape(pptx.shapes.RECTANGLE, {
+                    x: mx, y: HDR_Y, w: mw, h: HDR_H,
+                    fill: { color: TODAY_C }, line: { color: TODAY_C }
+                });
+            }
             slide.addText(getMonthShortName(m.month), {
-                x: mx, y: HDR_Y + HDR_H * 0.55, w: mw, h: HDR_H * 0.45,
-                fontSize: 6, color: TXT_DIM, fontFace: 'Segoe UI', align: 'center', valign: 'middle'
+                x: mx, y: HDR_Y, w: mw, h: HDR_H,
+                fontSize: 9, bold: true, color: TXT_W,
+                fontFace: 'Segoe UI', align: 'center', valign: 'middle'
             });
         });
 
-        // Vertical grid lines
+        // Vertical month grid lines through content area
         months.slice(1).forEach((m, i) => {
             const gx = TX + ((i + 1) / totalM) * TW;
-            const isQ = [4, 7, 10, 1].includes(m.month);
             slide.addShape(pptx.shapes.LINE, {
-                x: gx, y: HDR_Y, w: 0, h: gridBottom - HDR_Y,
-                line: { color: isQ ? GRID_Q : GRID_M, width: isQ ? 1.2 : 0.5, dashType: isQ ? 'solid' : 'lgDash' }
+                x: gx, y: ROW_Y0, w: 0, h: contentBottom - ROW_Y0,
+                line: { color: GRID_M, width: 0.5 }
             });
         });
 
-        // Today marker
+        // Today vertical marker
         const todayX = dToX(new Date());
         if (todayX !== null && todayX >= TX && todayX <= TX + TW) {
             slide.addShape(pptx.shapes.LINE, {
-                x: todayX, y: HDR_Y, w: 0, h: gridBottom - HDR_Y,
+                x: todayX, y: QTR_Y, w: 0, h: contentBottom - QTR_Y,
                 line: { color: TODAY_C, width: 1.5, dashType: 'dash' }
             });
-            slide.addText('TODAY', {
-                x: todayX - 0.3, y: gridBottom + 0.01, w: 0.6, h: 0.16,
-                fontSize: 5.5, bold: true, color: TODAY_C, fontFace: 'Segoe UI', align: 'center'
+            slide.addText('Today', {
+                x: todayX - 0.28, y: QTR_Y, w: 0.56, h: QTR_H,
+                fontSize: 7, bold: true, color: TODAY_C, fontFace: 'Segoe UI', align: 'center', valign: 'middle'
             });
         }
 
-        // Milestones
+        // Milestones (shown in the quarter row as diamonds + label)
         (milestones || []).forEach(ms => {
             const mx = dToX(ms.date);
             if (mx === null || mx < TX || mx > TX + TW) return;
             slide.addShape(pptx.shapes.DIAMOND, {
-                x: mx - 0.09, y: HDR_Y - 0.01, w: 0.18, h: 0.18,
-                fill: { color: 'E60000' }, line: { color: 'FFFFFF', width: 0.75 }
+                x: mx - 0.085, y: QTR_Y + (QTR_H - 0.15) / 2, w: 0.15, h: 0.15,
+                fill: { color: '333333' }, line: { color: TXT_W, width: 0.5 }
             });
             slide.addText(ms.name || '', {
-                x: mx - 0.55, y: HDR_Y - 0.22, w: 1.1, h: 0.2,
-                fontSize: 5.5, bold: true, color: 'FF8888', fontFace: 'Segoe UI', align: 'center'
+                x: mx - 0.55, y: QTR_Y - 0.18, w: 1.1, h: 0.2,
+                fontSize: 5.5, bold: true, color: '555555', fontFace: 'Segoe UI', align: 'center'
             });
         });
 
@@ -199,147 +238,102 @@ function exportToPPT() {
         });
     }
 
-    // ── Draw one Gantt row ────────────────────────────────────────────────
-    function addRow(slide, ri, label, color, startDate, endDate, pct, isGroup) {
-        const ry   = ROW_Y0 + ri * ROW_H;
-        const hexC = color.replace('#', '');
+    // ── Draw one swimlane row ─────────────────────────────────────────────
+    function drawSwimlane(slide, gName, groupTasks, rowY, rh, laneIdx) {
+        const gColor = (groups[gName]?.color || '#808080').replace('#', '');
 
-        // Zebra stripe on odd rows
-        if (ri % 2 === 0) {
-            slide.addShape(pptx.shapes.RECTANGLE, {
-                x: 0, y: ry, w: W, h: ROW_H,
-                fill: { color: ODD_BG }, line: { color: ODD_BG }
-            });
-        }
-
-        // Left colour accent strip for group rows
-        if (isGroup) {
-            slide.addShape(pptx.shapes.RECTANGLE, {
-                x: 0, y: ry, w: 0.06, h: ROW_H,
-                fill: { color: hexC }, line: { color: hexC }
-            });
-        }
-
-        // Row label
-        const lx = isGroup ? 0.12 : 0.22;
-        slide.addText(label, {
-            x: lx, y: ry, w: LW - lx - 0.05, h: ROW_H,
-            fontSize: isGroup ? 9 : 8,
-            bold: isGroup,
-            color: isGroup ? TXT_W : 'CCCCCC',
-            fontFace: 'Segoe UI',
-            valign: 'middle',
-            wrap: false
-        });
-
-        // Bar
-        const x1 = dToX(startDate);
-        const x2 = dToX(endDate);
-        if (x1 === null || x2 === null) return;
-
-        const bx = Math.min(x1, x2);
-        const bw = Math.max(Math.abs(x2 - x1), 0.08);
-        const by = ry + BAR_VPAD;
-
+        // Alternating row background
+        const laneBg = laneIdx % 2 === 0 ? LANE_BG1 : LANE_BG2;
         slide.addShape(pptx.shapes.RECTANGLE, {
-            x: bx, y: by, w: bw, h: BAR_H,
-            fill: { color: hexC },
-            line: { color: hexC }
+            x: 0, y: rowY, w: W, h: rh,
+            fill: { color: laneBg }, line: { color: laneBg }
         });
 
-        // Progress fill (white semi-transparent overlay on left portion)
-        if (pct !== null && pct > 0) {
+        // Bottom border
+        slide.addShape(pptx.shapes.RECTANGLE, {
+            x: 0, y: rowY + rh - 0.006, w: W, h: 0.006,
+            fill: { color: BORDER }, line: { color: BORDER }
+        });
+
+        // Left label cell (only if showLabels)
+        if (showLabels) {
             slide.addShape(pptx.shapes.RECTANGLE, {
-                x: bx, y: by, w: bw * (pct / 100), h: BAR_H,
-                fill: { color: 'FFFFFF', transparency: 65 },
-                line: { color: 'FFFFFF', transparency: 100 }
+                x: 0, y: rowY, w: LW, h: rh,
+                fill: { color: gColor }, line: { color: gColor }
+            });
+            slide.addText(gName, {
+                x: 0.08, y: rowY + 0.02, w: LW - 0.14, h: rh - 0.04,
+                fontSize: rh > 0.7 ? 9.5 : 8.5,
+                bold: true, color: TXT_W, fontFace: 'Segoe UI',
+                valign: 'middle', align: 'center', wrap: true
             });
         }
 
-        // Percentage label inside bar
-        if (pct !== null && bw > 0.35) {
-            slide.addText(`${pct}%`, {
-                x: bx + 0.04, y: by, w: bw - 0.08, h: BAR_H,
-                fontSize: isGroup ? 8 : 7,
-                bold: true,
-                color: 'FFFFFF',
-                fontFace: 'Segoe UI',
-                align: 'center',
-                valign: 'middle'
+        // Task bars
+        groupTasks.forEach((task, ti) => {
+            const tc  = (task.color || '#808080').replace('#', '');
+            const x1  = dToX(task.startDate);
+            const x2  = dToX(task.endDate);
+            if (x1 === null || x2 === null) return;
+
+            const bx  = Math.min(x1, x2);
+            const bw  = Math.max(Math.abs(x2 - x1), 0.1);
+            const by  = rowY + ROW_PAD + ti * (BAR_H + BAR_GAP);
+
+            // Bar background
+            slide.addShape(pptx.shapes.RECTANGLE, {
+                x: bx, y: by, w: bw, h: BAR_H,
+                fill: { color: tc }, line: { color: tc }
             });
-        }
-    }
 
-    // ════════════════════════════════════════════════════════════════════
-    // SUMMARY SLIDE(S)  — one row per group, auto-paginated
-    // ════════════════════════════════════════════════════════════════════
-    const groupChunks = [];
-    for (let i = 0; i < orderedGroups.length; i += ROWS_PER_SLIDE) {
-        groupChunks.push(orderedGroups.slice(i, i + ROWS_PER_SLIDE));
-    }
-
-    groupChunks.forEach((chunk, ci) => {
-        const slide = pptx.addSlide();
-        const pg = groupChunks.length > 1 ? ` (${ci + 1}/${groupChunks.length})` : '';
-        chrome(
-            slide,
-            `Summary${pg}`,
-            `${orderedGroups.length} sprints  ·  ${tasks.length} tasks`
-        );
-
-        chunk.forEach((gName, ri) => {
-            const s = groupSummary(gName);
-            if (!s) return;
-            const c = groups[gName]?.color || '#808080';
-            addRow(slide, ri, gName, c, s.gStart, s.gEnd, s.gPct, true);
-
-            // Task count badge to the right of the label
-            slide.addText(`${s.count} tasks`, {
-                x: LW - 0.72, y: ROW_Y0 + ri * ROW_H, w: 0.67, h: ROW_H,
-                fontSize: 6.5, color: TXT_DIM, fontFace: 'Segoe UI', align: 'right', valign: 'middle'
-            });
-        });
-    });
-
-    // ════════════════════════════════════════════════════════════════════
-    // DETAIL SLIDES  — one slide per group, tasks auto-paginated
-    //   Row 0 = group summary bar
-    //   Rows 1..N = individual tasks
-    // ════════════════════════════════════════════════════════════════════
-    const tasksPerPage = ROWS_PER_SLIDE - 1; // row 0 is always the group header
-
-    orderedGroups.forEach(gName => {
-        const gt = tasks.filter(t => t.group === gName);
-        if (!gt.length) return;
-
-        const gColor = groups[gName]?.color || '#808080';
-        const s = groupSummary(gName);
-
-        const taskChunks = [];
-        for (let i = 0; i < gt.length; i += tasksPerPage) {
-            taskChunks.push(gt.slice(i, i + tasksPerPage));
-        }
-
-        taskChunks.forEach((chunk, ci) => {
-            const slide = pptx.addSlide();
-            const pg = taskChunks.length > 1 ? `  —  page ${ci + 1}/${taskChunks.length}` : '';
-            chrome(slide, `${gName}${pg}`, `${gt.length} tasks`);
-
-            // Group summary row (always row 0)
-            if (s) {
-                addRow(slide, 0, gName, gColor, s.gStart, s.gEnd, s.gPct, true);
+            // Progress fill (white overlay)
+            let pct = typeof task.progress === 'number' ? task.progress : null;
+            if (pct === null) {
+                if (task.status === 'Completed')        pct = 100;
+                else if (task.status === 'Not Started') pct = 0;
+            }
+            if (pct !== null && pct > 0) {
+                slide.addShape(pptx.shapes.RECTANGLE, {
+                    x: bx, y: by, w: bw * (pct / 100), h: BAR_H,
+                    fill: { color: 'FFFFFF', transparency: 65 },
+                    line: { color: 'FFFFFF', transparency: 100 }
+                });
             }
 
-            // Individual task rows
-            chunk.forEach((task, ri) => {
-                const tc = task.color || gColor;
-                let pct = typeof task.progress === 'number' ? task.progress : null;
-                if (pct === null) {
-                    if (task.status === 'Completed')        pct = 100;
-                    else if (task.status === 'Not Started') pct = 0;
-                }
-                addRow(slide, ri + 1, task.name, tc, task.startDate, task.endDate, pct, false);
-            });
+            // Task name inside bar if wide enough, else to the right
+            const label = task.name || '';
+            if (bw >= 0.5) {
+                slide.addText(label, {
+                    x: bx + 0.05, y: by, w: bw - 0.1, h: BAR_H,
+                    fontSize: 7.5, bold: true, color: TXT_W,
+                    fontFace: 'Segoe UI', valign: 'middle', wrap: false
+                });
+            } else if (bx + bw + 0.6 < W) {
+                // Label to the right of a narrow bar
+                slide.addText(label, {
+                    x: bx + bw + 0.04, y: by, w: 1.0, h: BAR_H,
+                    fontSize: 7, color: TXT_D, fontFace: 'Segoe UI', valign: 'middle', wrap: false
+                });
+            }
+        });
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // BUILD SLIDES
+    // ════════════════════════════════════════════════════════════════════
+    const pages = paginate();
+
+    pages.forEach((pageGroups, pi) => {
+        const slide = pptx.addSlide();
+        const pageLabel = pages.length > 1 ? `Page ${pi + 1} / ${pages.length}` : '';
+        chrome(slide, pageLabel);
+
+        let curY = ROW_Y0;
+        pageGroups.forEach((gName, laneIdx) => {
+            const gt = tasks.filter(t => t.group === gName);
+            const rh = rowH(gt.length);
+            drawSwimlane(slide, gName, gt, curY, rh, laneIdx);
+            curY += rh;
         });
     });
 
