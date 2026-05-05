@@ -1,15 +1,14 @@
 /**
- * Export Gantt Chart to PowerPoint (.pptx) — Swimlane layout
+ * Export Gantt Chart to PowerPoint — Swimlane layout matching reference design.
  *
- * Structure:
- *   - Each GROUP becomes a horizontal swimlane row (label on left, task bars inside)
- *   - TASKS within a group stack vertically as coloured bars in the timeline
- *   - task.subtasks checklist items are ignored (task-level only)
- *   - If there is only one group OR all tasks share the same group name, the left
- *     label column is hidden and bars span the full width
- *   - Slides are auto-paginated: groups are split across slides when they won't fit
+ * Layout per slide:
+ *   [VOIS red title bar]
+ *   [Quarter markers row  — coloured shapes + labels + Today arrow]
+ *   [Dark pill timeline   — month names inside]
+ *   [Swimlane rows        — coloured label left | rounded task bars right]
+ *   [Footer]
  *
- * Requires PptxGenJS (pptxgen.bundle.js) loaded on the page.
+ * Requires PptxGenJS (pptxgen.bundle.js) on the page.
  */
 function exportToPPT() {
     if (!tasks || tasks.length === 0) {
@@ -21,44 +20,42 @@ function exportToPPT() {
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_WIDE'; // 13.33" × 7.5"
 
-    // ── Palette ──────────────────────────────────────────────────────────
-    const BG       = 'FFFFFF';
-    const TITLE_BG = 'E60000';
-    const HDR_BG   = '1F2937';   // dark navy month-header bar
-    const LANE_BG2 = 'F5F5F5';   // alternating swimlane stripe
-    const LANE_BG1 = 'FFFFFF';
-    const BORDER   = 'DEDEDE';
-    const GRID_M   = 'E8E8E8';
-    const GRID_Q   = 'CCCCCC';
-    const TODAY_C  = 'E60000';
-    const TXT_W    = 'FFFFFF';
-    const TXT_D    = '1A1A1A';
-    const TXT_MUT  = '999999';
+    // ── Colours ──────────────────────────────────────────────────────────
+    const C = {
+        bg:       'FFFFFF',
+        titleBg:  'E60000',        // VOIS red
+        pill:     '2C3454',        // dark navy pill
+        lane1:    'FFFFFF',
+        lane2:    'F4F4F4',
+        border:   'E2E2E2',
+        today:    'E60000',
+        txtW:     'FFFFFF',
+        txtD:     '2C2C2C',
+        txtMut:   'AAAAAA',
+        // cycling colours for quarter marker shapes
+        qShapes:  ['7B68C8', '3AAFA9', 'C0392B', '2980B9']
+    };
 
-    // ── Layout (inches) ──────────────────────────────────────────────────
+    // ── Layout constants (inches) ─────────────────────────────────────────
     const W        = 13.33;
     const H        = 7.5;
-    const TITLE_H  = 0.42;
-    const QTR_Y    = TITLE_H + 0.05;   // quarter-label row
-    const QTR_H    = 0.24;
-    const HDR_Y    = QTR_Y + QTR_H;    // month-bar top
-    const HDR_H    = 0.34;
-    const ROW_Y0   = HDR_Y + HDR_H;    // first swimlane top
-    const BAR_H    = 0.21;
-    const BAR_GAP  = 0.05;
-    const ROW_PAD  = 0.08;             // vertical padding inside each swimlane
-    const FOOTER_H = 0.22;
-    const AVAIL_H  = H - ROW_Y0 - FOOTER_H - 0.02;
+    const TITLE_H  = 0.42;         // VOIS red bar
 
-    // ── Determine whether to show the left label column ──────────────────
-    const activeGroupNames = (groupOrder.length ? groupOrder : Object.keys(groups))
-        .filter(g => tasks.some(t => t.group === g));
-    const showLabels = activeGroupNames.length > 1;
-    const LW = showLabels ? 1.75 : 0;
-    const TX = LW;
-    const TW = W - TX - 0.04;
+    const QTR_Y    = TITLE_H + 0.08;   // quarter marker row top
+    const QTR_H    = 0.28;
 
-    // ── Timeline bounds ──────────────────────────────────────────────────
+    const PILL_Y   = QTR_Y + QTR_H + 0.04;  // dark pill top
+    const PILL_H   = 0.38;
+
+    const ROW_Y0   = PILL_Y + PILL_H + 0.06; // first swimlane top
+
+    const BAR_H    = 0.22;
+    const BAR_GAP  = 0.06;
+    const ROW_PAD  = 0.10;         // top & bottom padding inside each swimlane
+    const FOOTER_H = 0.20;
+    const AVAIL_H  = H - ROW_Y0 - FOOTER_H - 0.04;
+
+    // ── Timeline data ────────────────────────────────────────────────────
     const taskDates = tasks.flatMap(t => [parseYMD(t.startDate), parseYMD(t.endDate)]).filter(Boolean);
     const msDates   = (milestones || []).map(m => parseYMD(m.date)).filter(Boolean);
     const allDates  = [...taskDates, ...msDates];
@@ -71,7 +68,15 @@ function exportToPPT() {
     const totalM   = months.length;
     const projName = projects[activeProjectIndex]?.name || 'Gantt Chart';
 
-    // ── Date → x position in the timeline ───────────────────────────────
+    // Groups that actually have tasks, in display order
+    const activeGroups = (groupOrder.length ? groupOrder : Object.keys(groups))
+        .filter(g => tasks.some(t => t.group === g));
+    const showLabels = activeGroups.length > 1;
+    const LW = showLabels ? 1.65 : 0;   // label column width
+    const TX = LW;
+    const TW = W - TX - 0.05;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
     function dToX(raw) {
         const d = (raw instanceof Date) ? raw : parseYMD(raw);
         if (!d) return null;
@@ -82,237 +87,245 @@ function exportToPPT() {
         return TX + ((idx + (day - 1) / daysInMo) / totalM) * TW;
     }
 
-    // ── Row height for a swimlane based on its task count ────────────────
     function rowH(n) {
-        return Math.max(0.52, ROW_PAD * 2 + n * (BAR_H + BAR_GAP) - BAR_GAP);
+        // Height tall enough to fit n stacked bars with padding top & bottom
+        return Math.max(0.56, ROW_PAD * 2 + n * (BAR_H + BAR_GAP) - BAR_GAP);
     }
 
-    // ── Paginate groups so each slide fits within available height ────────
+    // Split groups across slides so nothing overflows vertically
     function paginate() {
         const pages = [];
         let page = [], used = 0;
-        for (const g of activeGroupNames) {
-            const n  = tasks.filter(t => t.group === g).length;
-            const rh = rowH(n);
+        for (const g of activeGroups) {
+            const rh = rowH(tasks.filter(t => t.group === g).length);
             if (used + rh > AVAIL_H && page.length > 0) {
-                pages.push(page);
-                page = [g];
-                used = rh;
+                pages.push(page); page = [g]; used = rh;
             } else {
-                page.push(g);
-                used += rh;
+                page.push(g); used += rh;
             }
         }
         if (page.length) pages.push(page);
         return pages;
     }
 
-    // ── Draw slide chrome ─────────────────────────────────────────────────
+    // ── Slide chrome (title bar + quarter row + pill + footer) ───────────
     function chrome(slide, pageLabel) {
-        const contentBottom = H - FOOTER_H;
-
         // White background
         slide.addShape(pptx.shapes.RECTANGLE, {
             x: 0, y: 0, w: W, h: H,
-            fill: { color: BG }, line: { color: BG }
+            fill: { color: C.bg }, line: { color: C.bg }
         });
 
-        // VOIS Red title bar
+        // ── VOIS red title bar ──
         slide.addShape(pptx.shapes.RECTANGLE, {
             x: 0, y: 0, w: W, h: TITLE_H,
-            fill: { color: TITLE_BG }, line: { color: TITLE_BG }
+            fill: { color: C.titleBg }, line: { color: C.titleBg }
         });
         slide.addText(projName, {
             x: 0.15, y: 0, w: 8.5, h: TITLE_H,
-            fontSize: 16, bold: true, color: TXT_W, fontFace: 'Segoe UI', valign: 'middle'
+            fontSize: 16, bold: true, color: C.txtW,
+            fontFace: 'Segoe UI', valign: 'middle'
         });
         if (pageLabel) {
             slide.addText(pageLabel, {
                 x: 8.7, y: 0, w: W - 8.7 - 0.1, h: TITLE_H,
-                fontSize: 10, color: 'FFBBBB', fontFace: 'Segoe UI', valign: 'middle', align: 'right'
+                fontSize: 10, color: 'FFBBBB',
+                fontFace: 'Segoe UI', valign: 'middle', align: 'right'
             });
         }
 
-        // Quarter labels row (light grey text above the month bar)
+        // ── Quarter marker shapes + labels (above the pill) ──
         qGroups.forEach((q, qi) => {
-            const startIdx = months.findIndex(m =>
-                m.year === q.months[0].year && m.month === q.months[0].month
-            );
-            if (startIdx < 0) return;
-            const qx = TX + (startIdx / totalM) * TW;
-            const qw = (q.months.length / totalM) * TW;
+            const si = months.findIndex(m => m.year === q.months[0].year && m.month === q.months[0].month);
+            if (si < 0) return;
+            const qx     = TX + (si / totalM) * TW;
+            const colour  = C.qShapes[qi % C.qShapes.length];
+            const shapeH  = 0.16;
+            const shapeY  = QTR_Y + (QTR_H - shapeH) / 2;
 
-            // Quarter label text
-            slide.addText(`${q.fyLabel}  Q${q.quarter}`, {
-                x: qx + 0.03, y: QTR_Y, w: qw - 0.06, h: QTR_H,
-                fontSize: 7, bold: true, color: '888888',
+            // Alternate circle → rounded-square → diamond
+            if (qi % 3 === 0) {
+                slide.addShape(pptx.shapes.OVAL, {
+                    x: qx - shapeH / 2, y: shapeY, w: shapeH, h: shapeH,
+                    fill: { color: colour }, line: { color: colour }
+                });
+            } else if (qi % 3 === 1) {
+                slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+                    x: qx - shapeH / 2, y: shapeY, w: shapeH, h: shapeH,
+                    rectRadius: 0.2,
+                    fill: { color: colour }, line: { color: colour }
+                });
+            } else {
+                slide.addShape(pptx.shapes.DIAMOND, {
+                    x: qx - shapeH / 2, y: shapeY, w: shapeH, h: shapeH,
+                    fill: { color: colour }, line: { color: colour }
+                });
+            }
+
+            // Quarter label to the right of the shape
+            slide.addText(`${q.fyLabel} Q${q.quarter}`, {
+                x: qx + shapeH / 2 + 0.04, y: QTR_Y, w: 1.6, h: QTR_H,
+                fontSize: 6.5, bold: true, color: '555555',
                 fontFace: 'Segoe UI', valign: 'middle'
             });
-
-            // Dashed quarter boundary line down through the content
-            if (qi > 0) {
-                slide.addShape(pptx.shapes.LINE, {
-                    x: qx, y: QTR_Y, w: 0, h: contentBottom - QTR_Y,
-                    line: { color: GRID_Q, width: 0.8, dashType: 'lgDash' }
-                });
-            }
         });
 
-        // Label column header (dark box, same height as month bar)
-        if (showLabels) {
-            slide.addShape(pptx.shapes.RECTANGLE, {
-                x: 0, y: HDR_Y, w: LW, h: HDR_H,
-                fill: { color: '2D2D2D' }, line: { color: '2D2D2D' }
+        // ── Milestones in quarter row ──
+        (milestones || []).forEach(ms => {
+            const mx = dToX(ms.date);
+            if (mx === null || mx < TX || mx > TX + TW) return;
+            const shapeH = 0.14;
+            slide.addShape(pptx.shapes.OVAL, {
+                x: mx - shapeH / 2, y: QTR_Y + (QTR_H - shapeH) / 2,
+                w: shapeH, h: shapeH,
+                fill: { color: '555555' }, line: { color: C.txtW, width: 0.5 }
             });
-            slide.addText('Sprint / Group', {
-                x: 0.1, y: HDR_Y, w: LW - 0.15, h: HDR_H,
-                fontSize: 8, bold: true, color: TXT_W, fontFace: 'Segoe UI', valign: 'middle'
+            slide.addText(ms.name || '', {
+                x: mx - 0.55, y: QTR_Y - 0.22, w: 1.1, h: 0.2,
+                fontSize: 5.5, color: '555555', fontFace: 'Segoe UI',
+                align: 'center', bold: true
+            });
+        });
+
+        // ── TODAY label + downward arrow above pill ──
+        const todayX = dToX(new Date());
+        if (todayX !== null && todayX >= TX && todayX <= TX + TW) {
+            slide.addText('Today', {
+                x: todayX - 0.3, y: QTR_Y, w: 0.6, h: QTR_H * 0.65,
+                fontSize: 7.5, bold: true, color: C.today,
+                fontFace: 'Segoe UI', align: 'center', valign: 'middle'
+            });
+            // Downward-pointing arrow ▼ just above the pill
+            slide.addText('▼', {
+                x: todayX - 0.14, y: QTR_Y + QTR_H * 0.62, w: 0.28, h: 0.16,
+                fontSize: 9, bold: true, color: C.today,
+                fontFace: 'Segoe UI', align: 'center', valign: 'middle'
+            });
+            // Dashed vertical line through content
+            slide.addShape(pptx.shapes.LINE, {
+                x: todayX, y: PILL_Y, w: 0, h: H - PILL_Y - FOOTER_H,
+                line: { color: C.today, width: 1.2, dashType: 'dash' }
             });
         }
 
-        // Month header bar (dark navy)
-        slide.addShape(pptx.shapes.RECTANGLE, {
-            x: TX, y: HDR_Y, w: TW, h: HDR_H,
-            fill: { color: HDR_BG }, line: { color: HDR_BG }
+        // ── Dark pill — month names ──
+        // Outer pill shape
+        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+            x: TX, y: PILL_Y, w: TW, h: PILL_H,
+            rectRadius: 0.5,
+            fill: { color: C.pill }, line: { color: C.pill }
         });
 
-        // Month name labels + highlight today's month
+        // Month name cells inside the pill
+        const today = new Date();
         months.forEach((m, i) => {
-            const mx = TX + (i / totalM) * TW;
-            const mw = (1 / totalM) * TW;
-            const isNow = new Date().getMonth() + 1 === m.month && new Date().getFullYear() === m.year;
+            const mx  = TX + (i / totalM) * TW;
+            const mw  = (1 / totalM) * TW;
+            const isNow = today.getMonth() + 1 === m.month && today.getFullYear() === m.year;
+
+            // Subtle highlight for current month (slightly lighter inner pill)
             if (isNow) {
-                slide.addShape(pptx.shapes.RECTANGLE, {
-                    x: mx, y: HDR_Y, w: mw, h: HDR_H,
-                    fill: { color: TODAY_C }, line: { color: TODAY_C }
+                slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+                    x: mx + 0.03, y: PILL_Y + 0.05, w: mw - 0.06, h: PILL_H - 0.1,
+                    rectRadius: 0.5,
+                    fill: { color: 'E60000', transparency: 25 },
+                    line: { color: 'E60000', transparency: 25 }
                 });
             }
+
             slide.addText(getMonthShortName(m.month), {
-                x: mx, y: HDR_Y, w: mw, h: HDR_H,
-                fontSize: 9, bold: true, color: TXT_W,
+                x: mx, y: PILL_Y, w: mw, h: PILL_H,
+                fontSize: 10, bold: true, color: C.txtW,
                 fontFace: 'Segoe UI', align: 'center', valign: 'middle'
             });
         });
 
-        // Vertical month grid lines through content area
-        months.slice(1).forEach((m, i) => {
-            const gx = TX + ((i + 1) / totalM) * TW;
-            slide.addShape(pptx.shapes.LINE, {
-                x: gx, y: ROW_Y0, w: 0, h: contentBottom - ROW_Y0,
-                line: { color: GRID_M, width: 0.5 }
-            });
-        });
-
-        // Today vertical marker
-        const todayX = dToX(new Date());
-        if (todayX !== null && todayX >= TX && todayX <= TX + TW) {
-            slide.addShape(pptx.shapes.LINE, {
-                x: todayX, y: QTR_Y, w: 0, h: contentBottom - QTR_Y,
-                line: { color: TODAY_C, width: 1.5, dashType: 'dash' }
-            });
-            slide.addText('Today', {
-                x: todayX - 0.28, y: QTR_Y, w: 0.56, h: QTR_H,
-                fontSize: 7, bold: true, color: TODAY_C, fontFace: 'Segoe UI', align: 'center', valign: 'middle'
-            });
-        }
-
-        // Milestones (shown in the quarter row as diamonds + label)
-        (milestones || []).forEach(ms => {
-            const mx = dToX(ms.date);
-            if (mx === null || mx < TX || mx > TX + TW) return;
-            slide.addShape(pptx.shapes.DIAMOND, {
-                x: mx - 0.085, y: QTR_Y + (QTR_H - 0.15) / 2, w: 0.15, h: 0.15,
-                fill: { color: '333333' }, line: { color: TXT_W, width: 0.5 }
-            });
-            slide.addText(ms.name || '', {
-                x: mx - 0.55, y: QTR_Y - 0.18, w: 1.1, h: 0.2,
-                fontSize: 5.5, bold: true, color: '555555', fontFace: 'Segoe UI', align: 'center'
-            });
-        });
-
-        // Footer
+        // ── Footer ──
         const ts = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         slide.addText(`VOIS  ·  Generated ${ts}`, {
             x: 0, y: H - FOOTER_H, w: W, h: FOOTER_H,
-            fontSize: 6.5, color: TXT_MUT, fontFace: 'Segoe UI', align: 'center', valign: 'middle'
+            fontSize: 6, color: C.txtMut,
+            fontFace: 'Segoe UI', align: 'center', valign: 'middle'
         });
     }
 
     // ── Draw one swimlane row ─────────────────────────────────────────────
     function drawSwimlane(slide, gName, groupTasks, rowY, rh, laneIdx) {
-        const gColor = (groups[gName]?.color || '#808080').replace('#', '');
+        const gHex = (groups[gName]?.color || '#808080').replace('#', '');
 
         // Alternating row background
-        const laneBg = laneIdx % 2 === 0 ? LANE_BG1 : LANE_BG2;
         slide.addShape(pptx.shapes.RECTANGLE, {
             x: 0, y: rowY, w: W, h: rh,
-            fill: { color: laneBg }, line: { color: laneBg }
+            fill: { color: laneIdx % 2 === 0 ? C.lane1 : C.lane2 },
+            line: { color: laneIdx % 2 === 0 ? C.lane1 : C.lane2 }
         });
 
-        // Bottom border
+        // Bottom separator line
         slide.addShape(pptx.shapes.RECTANGLE, {
-            x: 0, y: rowY + rh - 0.006, w: W, h: 0.006,
-            fill: { color: BORDER }, line: { color: BORDER }
+            x: 0, y: rowY + rh - 0.005, w: W, h: 0.005,
+            fill: { color: C.border }, line: { color: C.border }
         });
 
-        // Left label cell (only if showLabels)
+        // ── Coloured label box on the left ──
         if (showLabels) {
             slide.addShape(pptx.shapes.RECTANGLE, {
                 x: 0, y: rowY, w: LW, h: rh,
-                fill: { color: gColor }, line: { color: gColor }
+                fill: { color: gHex }, line: { color: gHex }
             });
             slide.addText(gName, {
-                x: 0.08, y: rowY + 0.02, w: LW - 0.14, h: rh - 0.04,
-                fontSize: rh > 0.7 ? 9.5 : 8.5,
-                bold: true, color: TXT_W, fontFace: 'Segoe UI',
+                x: 0.07, y: rowY + 0.04, w: LW - 0.12, h: rh - 0.08,
+                fontSize: rh > 0.75 ? 9.5 : 8.5,
+                bold: true, color: C.txtW, fontFace: 'Segoe UI',
                 valign: 'middle', align: 'center', wrap: true
             });
         }
 
-        // Task bars
+        // ── Rounded pill bars for each task ──
         groupTasks.forEach((task, ti) => {
-            const tc  = (task.color || '#808080').replace('#', '');
-            const x1  = dToX(task.startDate);
-            const x2  = dToX(task.endDate);
+            const tHex = (task.color || '#808080').replace('#', '');
+            const x1   = dToX(task.startDate);
+            const x2   = dToX(task.endDate);
             if (x1 === null || x2 === null) return;
 
             const bx  = Math.min(x1, x2);
             const bw  = Math.max(Math.abs(x2 - x1), 0.1);
             const by  = rowY + ROW_PAD + ti * (BAR_H + BAR_GAP);
 
-            // Bar background
-            slide.addShape(pptx.shapes.RECTANGLE, {
+            // Pill bar
+            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
                 x: bx, y: by, w: bw, h: BAR_H,
-                fill: { color: tc }, line: { color: tc }
+                rectRadius: 0.5,
+                fill: { color: tHex }, line: { color: tHex }
             });
 
-            // Progress fill (white overlay)
+            // Progress overlay (white fill on left portion)
             let pct = typeof task.progress === 'number' ? task.progress : null;
             if (pct === null) {
                 if (task.status === 'Completed')        pct = 100;
                 else if (task.status === 'Not Started') pct = 0;
             }
-            if (pct !== null && pct > 0) {
-                slide.addShape(pptx.shapes.RECTANGLE, {
+            if (pct !== null && pct > 0 && pct < 100) {
+                slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
                     x: bx, y: by, w: bw * (pct / 100), h: BAR_H,
-                    fill: { color: 'FFFFFF', transparency: 65 },
+                    rectRadius: 0.5,
+                    fill: { color: 'FFFFFF', transparency: 60 },
                     line: { color: 'FFFFFF', transparency: 100 }
                 });
             }
 
-            // Task name inside bar if wide enough, else to the right
+            // Task name inside bar if wide enough, else to the right as grey text
             const label = task.name || '';
-            if (bw >= 0.5) {
+            if (bw >= 0.45) {
                 slide.addText(label, {
-                    x: bx + 0.05, y: by, w: bw - 0.1, h: BAR_H,
-                    fontSize: 7.5, bold: true, color: TXT_W,
+                    x: bx + 0.07, y: by, w: bw - 0.14, h: BAR_H,
+                    fontSize: 7.5, bold: true, color: C.txtW,
                     fontFace: 'Segoe UI', valign: 'middle', wrap: false
                 });
-            } else if (bx + bw + 0.6 < W) {
-                // Label to the right of a narrow bar
+            } else {
                 slide.addText(label, {
-                    x: bx + bw + 0.04, y: by, w: 1.0, h: BAR_H,
-                    fontSize: 7, color: TXT_D, fontFace: 'Segoe UI', valign: 'middle', wrap: false
+                    x: bx + bw + 0.06, y: by, w: 1.4, h: BAR_H,
+                    fontSize: 7, color: C.txtD,
+                    fontFace: 'Segoe UI', valign: 'middle', wrap: false
                 });
             }
         });
@@ -325,25 +338,21 @@ function exportToPPT() {
 
     pages.forEach((pageGroups, pi) => {
         const slide = pptx.addSlide();
-        const pageLabel = pages.length > 1 ? `Page ${pi + 1} / ${pages.length}` : '';
-        chrome(slide, pageLabel);
+        const lbl   = pages.length > 1 ? `Page ${pi + 1} / ${pages.length}` : '';
+        chrome(slide, lbl);
 
         let curY = ROW_Y0;
-        pageGroups.forEach((gName, laneIdx) => {
+        pageGroups.forEach((gName, li) => {
             const gt = tasks.filter(t => t.group === gName);
             const rh = rowH(gt.length);
-            drawSwimlane(slide, gName, gt, curY, rh, laneIdx);
+            drawSwimlane(slide, gName, gt, curY, rh, li);
             curY += rh;
         });
     });
 
-    // ── Save ─────────────────────────────────────────────────────────────
+    // ── Save ──────────────────────────────────────────────────────────────
     const safeName = projName.replace(/[^\w\-]+/g, '_');
-    const dateStr  = new Date().toISOString().slice(0, 10);
-    pptx.writeFile({ fileName: `${safeName}_${dateStr}.pptx` })
+    pptx.writeFile({ fileName: `${safeName}_${new Date().toISOString().slice(0, 10)}.pptx` })
         .then(() => showNotification('PPTX exported', 'success'))
-        .catch(err => {
-            console.error('PPTX export failed:', err);
-            showNotification('PPTX export failed', 'error');
-        });
+        .catch(err => { console.error(err); showNotification('PPTX export failed', 'error'); });
 }
