@@ -31,8 +31,8 @@ function exportToPPT(mode) {
     // "tasks" / "tasks-with-subtasks" use a narrow group-tag column + label column
     // "groups-and-tasks" / "groups-only" use a single wider label column (no group tag)
     const useGroupHeaders = (mode === 'groups-and-tasks' || mode === 'groups-only');
-    const GROUP_TAG_W = useGroupHeaders ? 0 : 0.85;
-    const LABEL_COL_W = useGroupHeaders ? 2.55 : 1.55;
+    const GROUP_TAG_W = useGroupHeaders ? 0 : 0.55;   // slim accent stripe for task modes
+    const LABEL_COL_W = useGroupHeaders ? 2.70 : 2.50; // wide enough for long task names
 
     const GX  = MARGIN_L;
     const LX  = GX + GROUP_TAG_W;
@@ -251,22 +251,16 @@ function exportToPPT(mode) {
             if(x1===null||x2===null) return;
             const w=Math.max(0,x2-x1);
             const isZero=w<0.04;
-            // Group tag
+            // Group tag — colored accent stripe only (no text, column is now slim)
             slide.addShape(pptx.shapes.RECTANGLE,{
-                x:GX, y:y+h*0.18, w:0.10, h:h*0.64,
+                x:GX, y:y+h*0.15, w:0.10, h:h*0.70,
                 fill:{color:groupColor}, line:{color:groupColor}
             });
-            slide.addText(row.group||'',{
-                x:GX+0.14, y:y, w:GROUP_TAG_W-0.16, h:h,
-                fontSize:Math.min(9,h*22), color:C.groupTag,
-                fontFace:'Segoe UI', italic:true,
-                align:'left', valign:'middle', wrap:false, shrinkText:true
-            });
-            // Task name
+            // Task name — left-aligned so long names overflow towards timeline, not off-slide
             slide.addText((t.name||'').toUpperCase(),{
-                x:LX, y:y, w:LABEL_COL_W-0.08, h:h,
-                fontSize:Math.min(12,h*26), bold:true, color:C.ink,
-                fontFace:'Segoe UI', align:'right', valign:'middle',
+                x:LX+0.08, y:y, w:LABEL_COL_W-0.10, h:h,
+                fontSize:Math.min(11,h*24), bold:true, color:C.ink,
+                fontFace:'Segoe UI', align:'left', valign:'middle',
                 wrap:false, shrinkText:true
             });
             const subs=row.subs, hasSubs=subs.length>0;
