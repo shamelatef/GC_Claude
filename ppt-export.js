@@ -53,6 +53,19 @@ function exportToPPT(mode) {
         groupTag:'6B7280', groupHdr:'F0F4FF', groupHdrText:'1E3A5F'
     };
 
+    // ── Label fit helper ─────────────────────────────────────────────────
+    // Pre-computes font size so text never overflows its box.
+    // Segoe UI Bold uppercase: ~0.0072" per character per point.
+    const CHAR_W_PER_PT = 0.0072;
+    function fitLabel(text, availW) {
+        for (let fs = 11; fs >= 6; fs--) {
+            if (text.length * fs * CHAR_W_PER_PT <= availW) return { text, fontSize: fs };
+        }
+        // Still too long at 6pt — truncate with ellipsis
+        const maxChars = Math.floor(availW / (6 * CHAR_W_PER_PT));
+        return { text: text.slice(0, Math.max(3, maxChars - 1)) + '…', fontSize: 6 };
+    }
+
     // ── Date helpers ─────────────────────────────────────────────────────
     function ymd(s){ return (s instanceof Date) ? s : parseYMD(s); }
     function days(a,b){ return Math.round((b-a)/86400000); }
@@ -256,13 +269,14 @@ function exportToPPT(mode) {
                 x:GX, y:y+h*0.15, w:0.10, h:h*0.70,
                 fill:{color:groupColor}, line:{color:groupColor}
             });
-            // Task name — strictly bounded to label column, never touches timeline
-            const labelMaxW = TX - LX - 0.20; // hard stop 0.20" before timeline
-            slide.addText((t.name||'').toUpperCase(),{
+            // Task name — pre-fitted so it never clips or overflows into the timeline
+            const labelMaxW = TX - LX - 0.20;
+            const lbl = fitLabel((t.name||'').toUpperCase(), labelMaxW);
+            slide.addText(lbl.text,{
                 x:LX+0.08, y:y, w:labelMaxW, h:h,
-                fontSize:Math.min(11,h*24), bold:true, color:C.ink,
+                fontSize:lbl.fontSize, bold:true, color:C.ink,
                 fontFace:'Segoe UI', align:'left', valign:'middle',
-                wrap:false, shrinkText:true
+                wrap:false
             });
             const subs=row.subs, hasSubs=subs.length>0;
             const parentH=hasSubs?Math.min(0.34,h*0.42):Math.min(0.34,h*0.78);
@@ -528,13 +542,14 @@ function exportToPPT(mode) {
         const barH = Math.min(0.30, h*0.74);
         const barY = y + (h-barH)/2;
 
-        // Task name — strictly bounded to label column, never touches timeline
-        const labelMaxW = TX - GX - 0.22 - 0.20; // hard stop 0.20" before timeline
-        slide.addText((t.name||'').toUpperCase(), {
+        // Task name — pre-fitted so it never clips or overflows into the timeline
+        const labelMaxW = TX - GX - 0.22 - 0.20;
+        const lbl = fitLabel((t.name||'').toUpperCase(), labelMaxW);
+        slide.addText(lbl.text, {
             x:GX+0.22, y, w:labelMaxW, h,
-            fontSize:Math.min(11, h*26), bold:true, color:C.ink,
+            fontSize:lbl.fontSize, bold:true, color:C.ink,
             fontFace:'Segoe UI', align:'left', valign:'middle',
-            wrap:false, shrinkText:true
+            wrap:false
         });
 
         if (isZero) {
@@ -544,7 +559,7 @@ function exportToPPT(mode) {
                 fill:{color:tColor}, line:{color:tColor}
             });
         } else {
-            // Bar only — name is already in label column, no duplicate inside bar
+            // Bar shape only — name lives in label column, no duplicate inside bar
             slide.addShape(pptx.shapes.PENTAGON,{
                 x:x1, y:barY, w:Math.max(0.30,w), h:barH,
                 fill:{color:tColor}, line:{color:tColor}
