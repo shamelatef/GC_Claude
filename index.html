@@ -240,9 +240,13 @@
                             <span class="kebab-item-icon">📥</span>
                             <span>Import from Planner (Excel)</span>
                         </div>
-<div class="kebab-item" role="menuitem" onclick="exportToPPT(); this.closest('.kebab-dropdown')?.classList.remove('show');">
+<div class="kebab-item" role="menuitem" onclick="exportToPPT('tasks'); this.closest('.kebab-dropdown')?.classList.remove('show');">
                             <span class="kebab-item-icon">📊</span>
-                            <span>Export to PowerPoint</span>
+                            <span>Export to PowerPoint — tasks only</span>
+                        </div>
+                        <div class="kebab-item" role="menuitem" onclick="exportToPPT('tasks-with-subtasks'); this.closest('.kebab-dropdown')?.classList.remove('show');">
+                            <span class="kebab-item-icon">📋</span>
+                            <span>Export to PowerPoint — tasks with subtasks</span>
                         </div>
                     </div>
                 </div>
