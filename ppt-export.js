@@ -251,14 +251,15 @@ function exportToPPT(mode) {
             if(x1===null||x2===null) return;
             const w=Math.max(0,x2-x1);
             const isZero=w<0.04;
-            // Group tag — colored accent stripe only (no text, column is now slim)
+            // Group tag — colored accent stripe only
             slide.addShape(pptx.shapes.RECTANGLE,{
                 x:GX, y:y+h*0.15, w:0.10, h:h*0.70,
                 fill:{color:groupColor}, line:{color:groupColor}
             });
-            // Task name — left-aligned so long names overflow towards timeline, not off-slide
+            // Task name — strictly bounded to label column, never touches timeline
+            const labelMaxW = TX - LX - 0.20; // hard stop 0.20" before timeline
             slide.addText((t.name||'').toUpperCase(),{
-                x:LX+0.08, y:y, w:LABEL_COL_W-0.10, h:h,
+                x:LX+0.08, y:y, w:labelMaxW, h:h,
                 fontSize:Math.min(11,h*24), bold:true, color:C.ink,
                 fontFace:'Segoe UI', align:'left', valign:'middle',
                 wrap:false, shrinkText:true
@@ -273,19 +274,11 @@ function exportToPPT(mode) {
                     fill:{color:tColor}, line:{color:tColor}
                 });
             } else {
+                // Bar only — name is already in label column, no duplicate inside bar
                 slide.addShape(pptx.shapes.PENTAGON,{
                     x:x1, y:parentY, w:Math.max(0.32,w), h:parentH,
                     fill:{color:tColor}, line:{color:tColor}
                 });
-                const fs=Math.min(11,parentH*32);
-                const charW=fs*0.0075;
-                if(w>=(t.name||'').length*charW+0.2 && w>=0.6){
-                    slide.addText(t.name||'',{
-                        x:x1+0.1, y:parentY, w:Math.max(0.16,w-0.28), h:parentH,
-                        fontSize:fs, bold:true, color:'FFFFFF',
-                        fontFace:'Segoe UI', align:'center', valign:'middle', wrap:false
-                    });
-                }
             }
             slide.addText(`${fmtMD(ts)} – ${fmtMD(te)}`,{
                 x:x2+0.08, y:parentY, w:(W-MARGIN_R)-(x2+0.08), h:parentH,
@@ -535,9 +528,10 @@ function exportToPPT(mode) {
         const barH = Math.min(0.30, h*0.74);
         const barY = y + (h-barH)/2;
 
-        // Task name (left-aligned, slightly indented)
+        // Task name — strictly bounded to label column, never touches timeline
+        const labelMaxW = TX - GX - 0.22 - 0.20; // hard stop 0.20" before timeline
         slide.addText((t.name||'').toUpperCase(), {
-            x:GX+0.22, y, w:LABEL_COL_W-0.26, h,
+            x:GX+0.22, y, w:labelMaxW, h,
             fontSize:Math.min(11, h*26), bold:true, color:C.ink,
             fontFace:'Segoe UI', align:'left', valign:'middle',
             wrap:false, shrinkText:true
@@ -550,19 +544,11 @@ function exportToPPT(mode) {
                 fill:{color:tColor}, line:{color:tColor}
             });
         } else {
+            // Bar only — name is already in label column, no duplicate inside bar
             slide.addShape(pptx.shapes.PENTAGON,{
                 x:x1, y:barY, w:Math.max(0.30,w), h:barH,
                 fill:{color:tColor}, line:{color:tColor}
             });
-            const fs=Math.min(10,barH*30);
-            const charW=fs*0.0075;
-            if (w>=(t.name||'').length*charW+0.18&&w>=0.5) {
-                slide.addText(t.name||'',{
-                    x:x1+0.10, y:barY, w:Math.max(0.14,w-0.24), h:barH,
-                    fontSize:fs, bold:true, color:'FFFFFF',
-                    fontFace:'Segoe UI', align:'center', valign:'middle', wrap:false
-                });
-            }
         }
         // Date range
         slide.addText(`${fmtMD(ts)} – ${fmtMD(te)}`,{
