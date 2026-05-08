@@ -39,7 +39,7 @@ function buildPlannerHeaderMap(headers) {
         ['assignedTo',      ['assignedto','assignee','owner','responsible']],
         ['completedDate',   ['completeddate','completiondatetime','closedate']],
         ['notes',           ['notes','description','details','comment']],
-        ['checklistItem',   ['checklistitem','checklist','subtask','subtaskname','checklistitemtitle']],
+        ['checklistItem',   ['checklistitem','checklist','subtask','subtaskname','checklistitemtitle','Checklist Item']],
         ['checklistStatus', ['checklistitemstate','checkliststatus','subtaskstatus','subtaskstate']],
         ['parentTask',      ['parenttask','parenttaskname','parentid']],
     ];
@@ -148,11 +148,18 @@ function parsePlannerDate(raw) {
 
 // ─── Main import function ────────────────────────────────────────────────────
 /**
- * Process rows from a Planner Excel export and return
- * { imported, skipped, warnings }
+ * Process rows from a Planner Excel export and return { imported, skipped, warnings }.
  *
- * Side-effects: mutates global `tasks`, `groups`, `groupStates`, `groupOrder`
- * via the same helpers used by the rest of the app.
+ * Mapping:
+ *   "Task Name" column          →  Group name
+ *   "Checklist Item" column     →  Semicolon-separated task names  "item1;item2;item3"
+ *                                  Each token becomes one Gantt task under that group.
+ *   No checklist / empty cell   →  One fallback task named after the group.
+ *
+ * All tasks in a group inherit the parent row's Start Date, Due Date,
+ * Progress, and Status.
+ *
+ * Side-effects: mutates global `tasks`, `groups`, `groupStates`, `groupOrder`.
  */
 function importPlannerRows(rows) {
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -160,141 +167,98 @@ function importPlannerRows(rows) {
     }
 
     const headers = Object.keys(rows[0]);
-    const hm = buildPlannerHeaderMap(headers);
+    const hm      = buildPlannerHeaderMap(headers);
     const warnings = [];
 
     if (!hm.taskName) {
         return { imported: 0, skipped: 0, warnings: ['Could not find a Task Name column. Make sure you are importing the original Planner Excel export.'] };
     }
 
-    // Utility
     const get = (row, field) => hm[field] ? String(row[hm[field]] ?? '').trim() : '';
 
     let imported = 0;
-    let skipped = 0;
-    let idBase = Date.now();
-
-    // Two-pass approach:
-    // Pass 1 – collect parent tasks (rows with a name AND dates, or rows that are clearly tasks)
-    // Pass 2 – collect subtask/checklist rows and link to their parent
-
-    // We track the last seen parent task id so subtasks can attach
-    let lastParentId = null;
-    const taskSubtaskMap = {}; // taskId -> [{ name, done }]
-    const taskRows = [];       // filtered parent task data
+    let skipped  = 0;
+    let idBase   = Date.now();
 
     for (const row of rows) {
-        const rawName    = get(row, 'taskName');
-        const rawBucket  = get(row, 'bucket');
-        const rawStart   = get(row, 'startDate');
-        const rawDue     = get(row, 'dueDate');
-        const rawProg    = get(row, 'progress');
-        const rawPct     = get(row, 'percentComplete');
-        const rawChecklist = get(row, 'checklistItem');
-        const rawCheckSt = get(row, 'checklistStatus');
+        const rawName      = get(row, 'taskName');
+        const rawStart     = get(row, 'startDate');
+        const rawDue       = get(row, 'dueDate');
+        const rawProg      = get(row, 'progress');
+        const rawPct       = get(row, 'percentComplete');
+        const rawChecklist = get(row, 'checklistItem');   // e.g. "Design;Build;Test"
 
-        // ── Subtask / checklist row detection ────────────────────────────
-        // A row is a subtask if:
-        //   - it has no task name but has a checklist item
-        //   - OR it has a name but no dates AND a non-empty checklist item
-        //   - OR an explicit parentTask column points to a parent
-        const rawParent = get(row, 'parentTask');
-        const isSubtask = (
-            (!rawName && rawChecklist) ||
-            (rawChecklist && rawParent) ||
-            (rawName && !rawStart && !rawDue && rawChecklist && lastParentId !== null)
-        );
-
-        if (isSubtask && lastParentId !== null) {
-            const stName = rawChecklist || rawName;
-            if (stName) {
-                if (!taskSubtaskMap[lastParentId]) taskSubtaskMap[lastParentId] = [];
-                const isDone = ['completed','done','true','1','checked','yes'].includes(
-                    (rawCheckSt || rawProg || '').toLowerCase().replace(/[\s_]+/g,'')
-                );
-                taskSubtaskMap[lastParentId].push({ name: stName, done: isDone });
-            }
-            continue;
-        }
-
-        // ── Parent task row ───────────────────────────────────────────────
         if (!rawName) { skipped++; continue; }
 
+        // ── Dates ─────────────────────────────────────────────────────────
         const startISO = parsePlannerDate(rawStart);
         const dueISO   = parsePlannerDate(rawDue);
 
-        // If no dates, try to use today as start and today+1 as fallback so task appears
-        const today = new Date();
+        const today    = new Date();
         const todayISO = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-        const tmr = new Date(today); tmr.setDate(tmr.getDate() + 1);
-        const tmrISO = `${tmr.getFullYear()}-${String(tmr.getMonth()+1).padStart(2,'0')}-${String(tmr.getDate()).padStart(2,'0')}`;
+        const tmr      = new Date(today); tmr.setDate(tmr.getDate() + 1);
+        const tmrISO   = `${tmr.getFullYear()}-${String(tmr.getMonth()+1).padStart(2,'0')}-${String(tmr.getDate()).padStart(2,'0')}`;
 
         const effectiveStart = startISO || todayISO;
         const effectiveDue   = dueISO   || (startISO ? startISO : tmrISO);
 
-        // Validate dates are not inverted
         if (new Date(effectiveStart) > new Date(effectiveDue)) {
             warnings.push(`"${rawName}": start date is after due date – swapped.`);
         }
         const finalStart = new Date(effectiveStart) <= new Date(effectiveDue) ? effectiveStart : effectiveDue;
         const finalEnd   = new Date(effectiveStart) <= new Date(effectiveDue) ? effectiveDue   : effectiveStart;
 
-        // Progress
+        // ── Progress / status ─────────────────────────────────────────────
         const pctRaw = rawPct !== '' ? parseProgress(rawPct) : parseProgress(rawProg);
-        const pct = pctRaw !== null ? pctRaw : null;
-
-        // Status
+        const pct    = pctRaw !== null ? pctRaw : null;
         const status = plannerProgressToStatus(rawProg, pct);
+        const color  = (typeof STATUS_COLORS !== 'undefined' ? STATUS_COLORS[status] : null) || '#808080';
 
-        // Bucket → group (fallback 'General')
-        const groupName = rawBucket || 'General';
+        // ── Group = Task Name ─────────────────────────────────────────────
+        const groupName = rawName;
 
-        const taskId = idBase++;
-        lastParentId = taskId;
+        if (!groups[groupName]) {
+            groups[groupName]      = { name: groupName, color };
+            groupStates[groupName] = true;
+            groupOrder.push(groupName);
+        }
 
-        taskRows.push({
-            id: taskId,
-            name: rawName,
-            group: groupName,
-            startDate: finalStart,
-            endDate: finalEnd,
-            status,
-            progress: pct, // 0-100 or null
-            color: (typeof STATUS_COLORS !== 'undefined' ? STATUS_COLORS[status] : null) || '#808080',
-            _hasDate: !!(startISO || dueISO),
-        });
+        // ── Tasks = semicolon-split checklist items ────────────────────────
+        // Split on ";" and strip whitespace; filter out empty tokens.
+        const checklistItems = rawChecklist
+            ? rawChecklist.split(';').map(s => s.trim()).filter(Boolean)
+            : [];
 
-        imported++;
-    }
-
-    // Attach subtasks and compute progress from subtasks when no explicit pct given
-    for (const t of taskRows) {
-        const subs = taskSubtaskMap[t.id] || [];
-        if (subs.length > 0) {
-            t.subtasks = subs;
-            // If no explicit progress, derive from subtask completion ratio
-            if (t.progress === null) {
-                const doneCount = subs.filter(s => s.done).length;
-                t.progress = Math.round((doneCount / subs.length) * 100);
-                // Also refine status from subtask-derived progress
-                if (t.progress === 100) t.status = 'Completed';
-                else if (t.progress > 0) t.status = 'In Progress';
-                t.color = (typeof STATUS_COLORS !== 'undefined' ? STATUS_COLORS[t.status] : null) || t.color;
+        if (checklistItems.length > 0) {
+            for (const itemName of checklistItems) {
+                tasks.push({
+                    id:        idBase++,
+                    name:      itemName,
+                    group:     groupName,
+                    startDate: finalStart,
+                    endDate:   finalEnd,
+                    status,
+                    progress:  pct,
+                    color,
+                });
+                imported++;
             }
+        } else {
+            // No checklist → one task named after the group
+            tasks.push({
+                id:        idBase++,
+                name:      groupName,
+                group:     groupName,
+                startDate: finalStart,
+                endDate:   finalEnd,
+                status,
+                progress:  pct,
+                color,
+            });
+            imported++;
         }
-    }
 
-    // Merge into global state
-    for (const t of taskRows) {
-        tasks.push(t);
-
-        if (typeof applyAutoGroupStatus === 'function') applyAutoGroupStatus(t.group);
-
-        if (!groups[t.group]) {
-            groups[t.group] = { name: t.group, color: t.color };
-            groupStates[t.group] = true;
-            groupOrder.push(t.group);
-        }
+        if (typeof applyAutoGroupStatus === 'function') applyAutoGroupStatus(groupName);
     }
 
     return { imported, skipped, warnings };
