@@ -97,6 +97,53 @@ function exportToPPT(mode) {
         return text.length * pt * (up ? 0.0061 : 0.0052);
     }
 
+    // Returns 0-100 group progress (matches web-app logic exactly)
+    function groupProgress(g) {
+        const gt = tasks.filter(t => t.group === g);
+        if (!gt.length) return null;
+        const withPct = gt.filter(t => typeof t.progress === 'number');
+        if (withPct.length) {
+            return Math.round(withPct.reduce((s, t) => s + t.progress, 0) / withPct.length);
+        }
+        const done = gt.filter(t => t.status === 'Completed').length;
+        return Math.round((done / gt.length) * 100);
+    }
+
+    // Blend a hex colour toward white by `factor` (0 = original, 1 = white)
+    function lightenHex(hex, factor) {
+        const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+        const b2 = v => Math.round(v + (255-v)*factor).toString(16).padStart(2,'0');
+        return b2(r)+b2(g)+b2(b);
+    }
+
+    // Draws a CHEVRON with progress fill on the timeline bar.
+    // When pct is known: light background chevron + solid fill rectangle overlay.
+    // When pct is null:  single solid chevron (original behaviour).
+    function drawChevronWithProgress(slide, x, y, w, h, color, pct) {
+        const minW = Math.max(0.28, w);
+        if (pct === null || pct >= 100) {
+            // Solid bar — no split needed
+            const col = pct >= 100 ? color : color;
+            slide.addShape(pptx.shapes.CHEVRON, {
+                x, y, w:minW, h, fill:{color}, line:{color}
+            });
+        } else {
+            // 1 — Light background chevron (empty portion)
+            const bgColor = lightenHex(color, 0.55);
+            slide.addShape(pptx.shapes.CHEVRON, {
+                x, y, w:minW, h, fill:{color:bgColor}, line:{color:bgColor}
+            });
+            // 2 — Solid fill rectangle (filled portion), inset slightly so chevron edge shows
+            if (pct > 0) {
+                const fillW = Math.max(0.02, minW * pct / 100);
+                slide.addShape(pptx.shapes.RECTANGLE, {
+                    x, y:y + 0.02, w:fillW, h:h - 0.04,
+                    fill:{color}, line:{color}
+                });
+            }
+        }
+    }
+
     // ── Date helpers ──────────────────────────────────────────────────────
     function ymd(s)  { return (s instanceof Date) ? s : parseYMD(s); }
     function days(a, b) { return Math.round((b - a) / 86400000); }
@@ -528,15 +575,13 @@ function exportToPPT(mode) {
         });
 
         // 3 — Label text: spans the full lavender bar width (GRP_TEXT_X → right margin).
-        //     wrap:false  →  text stays on ONE horizontal line, always.
-        //     autoFitType:'shrink'  →  font scales down automatically if the name is
-        //     extremely long, so it never wraps or overflows the slide.
         slide.addText(label, {
             x:GRP_TEXT_X, y:y + 0.01, w:W - GRP_TEXT_X - MARGIN_R, h:h - 0.02,
             fontSize:GRP_FS, bold:true, color:C.groupText,
             fontFace:'Segoe UI', align:'left', valign:'middle',
             wrap:false, autoFitType:'shrink'
         });
+
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -564,18 +609,16 @@ function exportToPPT(mode) {
             wrap:true
         });
 
-        // ── Chevron / diamond — always starts at the fixed TX boundary ──
+        // ── Chevron / diamond with progress fill ─────────────────────────
         if (isZero) {
             const sz = Math.min(0.16, barH);
             slide.addShape(pptx.shapes.DIAMOND, {
-                x:x1 - sz/2, y:barY + (barH - sz)/2, w:sz, h:sz,
+                x:x1 - sz/2, y:barY + (barH-sz)/2, w:sz, h:sz,
                 fill:{color:tColor}, line:{color:tColor}
             });
         } else {
-            slide.addShape(pptx.shapes.CHEVRON, {
-                x:x1, y:barY, w:Math.max(0.28, bw), h:barH,
-                fill:{color:tColor}, line:{color:tColor}
-            });
+            const pct = typeof t.progress === 'number' ? t.progress : null;
+            drawChevronWithProgress(slide, x1, barY, bw, barH, tColor, pct);
         }
 
         // ── Date range label — right of bar ─────────────────────────────
@@ -628,7 +671,7 @@ function exportToPPT(mode) {
             wrap:true
         });
 
-        // ── Layer 4: Chevron / diamond — group date span ─────────────────
+        // ── Layer 4: Chevron / diamond with progress fill ────────────────
         if (bw < 0.04) {
             const sz = 0.16;
             slide.addShape(pptx.shapes.DIAMOND, {
@@ -636,13 +679,11 @@ function exportToPPT(mode) {
                 fill:{color:gColor}, line:{color:gColor}
             });
         } else {
-            slide.addShape(pptx.shapes.CHEVRON, {
-                x:x1, y:barY, w:Math.max(0.30, bw), h:barH,
-                fill:{color:gColor}, line:{color:gColor}
-            });
+            const pct = groupProgress(row.group);
+            drawChevronWithProgress(slide, x1, barY, bw, barH, gColor, pct);
         }
 
-        // ── Layer 5: Date range right of chevron ─────────────────────────
+        // ── Layer 6: Date range right of chevron ──────────────────────────
         const dateX = x2 + 0.12;
         const dateW = (W - MARGIN_R) - dateX;
         if (dateW > 0.25) {
