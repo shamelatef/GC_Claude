@@ -235,12 +235,17 @@ function importPlannerRows(rows, overrides = {}) {
         imported++;
     };
 
-    const ensureGroup = (name, color) => {
+    // Track which groups were added during this import and (in hierarchy mode) their numeric Task ID.
+    const importStartIdx  = groupOrder.length;
+    const groupTaskIdMap  = {};   // groupName → numeric Task ID (hierarchy mode only)
+
+    const ensureGroup = (name, color, numericId) => {
         if (!groups[name]) {
             groups[name]      = { name, color };
             groupStates[name] = true;
             groupOrder.push(name);
         }
+        if (numericId != null) groupTaskIdMap[name] = numericId;
     };
 
     // ── Mode 1: Task ID hierarchy (1 → group, 1.1 → subtask) ────────────────
@@ -267,7 +272,8 @@ function importPlannerRows(rows, overrides = {}) {
                 flushParent();
                 hasSubs = false;
                 const p = parseRow(row, rawName);
-                ensureGroup(rawName, p.color);
+                const numericId = parseFloat(rawId) || 0;
+                ensureGroup(rawName, p.color, numericId);
                 parent = { name: rawName, ...p };
             } else {
                 // ── Subtask row ────────────────────────────────────────────
@@ -287,6 +293,12 @@ function importPlannerRows(rows, overrides = {}) {
             }
         }
         flushParent();
+
+        // Sort newly added groups by their numeric Task ID (ascending) so that
+        // Task 1 appears before Task 2 regardless of Excel row order.
+        const added = groupOrder.splice(importStartIdx);
+        added.sort((a, b) => (groupTaskIdMap[a] || 0) - (groupTaskIdMap[b] || 0));
+        groupOrder.push(...added);
 
     // ── Mode 2: Column-picker (semicolon checklist split) ────────────────────
     } else {
@@ -308,6 +320,11 @@ function importPlannerRows(rows, overrides = {}) {
                 pushTask(rawName, rawName, p);
             }
         }
+
+        // Planner exports newest-first; reverse so the oldest task appears at the top.
+        const added = groupOrder.splice(importStartIdx);
+        added.reverse();
+        groupOrder.push(...added);
     }
 
     return { imported, skipped, warnings };
