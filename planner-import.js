@@ -148,20 +148,29 @@ function parsePlannerDate(raw) {
 
 // ─── Main import function ────────────────────────────────────────────────────
 /**
- * Process rows from a Planner Excel export and return { imported, skipped, warnings }.
+ * Returns true when the file uses the native Planner hierarchy:
+ *   whole-number IDs = parent tasks, decimal IDs (1.1, 2.3) = subtasks.
+ */
+function _hasPlannerHierarchy(rows, hm) {
+    if (!hm.taskId) return false;
+    return rows.some(r => /^\d+\.\d+/.test(String(r[hm.taskId] ?? '').trim()));
+}
+
+/**
+ * @param {object[]} rows
+ * @param {{ groupCol?: string, taskCol?: string }} [overrides]
+ *   groupCol – raw header to use as group name (column-picker mode only)
+ *   taskCol  – raw header to use as task/checklist (column-picker mode only)
  *
- * Mapping:
- *   "Task Name" column          →  Group name
- *   "Checklist Item" column     →  Semicolon-separated task names  "item1;item2;item3"
- *                                  Each token becomes one Gantt task under that group.
- *   No checklist / empty cell   →  One fallback task named after the group.
- *
- * All tasks in a group inherit the parent row's Start Date, Due Date,
- * Progress, and Status.
+ * Two modes (auto-selected):
+ *   Hierarchy mode  – Task ID column contains decimal IDs like 1.1, 2.3.
+ *                     Whole-number ID rows → groups; decimal ID rows → tasks under last parent.
+ *   Column-picker   – No Task ID hierarchy detected. Group column and task/checklist
+ *                     column are chosen by the user (or auto-detected).
  *
  * Side-effects: mutates global `tasks`, `groups`, `groupStates`, `groupOrder`.
  */
-function importPlannerRows(rows) {
+function importPlannerRows(rows, overrides = {}) {
     if (!Array.isArray(rows) || rows.length === 0) {
         return { imported: 0, skipped: 0, warnings: ['No rows found in file.'] };
     }
@@ -169,6 +178,9 @@ function importPlannerRows(rows) {
     const headers = Object.keys(rows[0]);
     const hm      = buildPlannerHeaderMap(headers);
     const warnings = [];
+
+    if (overrides.groupCol) hm.taskName      = overrides.groupCol;
+    if (overrides.taskCol)  hm.checklistItem = overrides.taskCol;
 
     if (!hm.taskName) {
         return { imported: 0, skipped: 0, warnings: ['Could not find a Task Name column. Make sure you are importing the original Planner Excel export.'] };
@@ -180,17 +192,14 @@ function importPlannerRows(rows) {
     let skipped  = 0;
     let idBase   = Date.now();
 
-    for (const row of rows) {
-        const rawName      = get(row, 'taskName');
-        const rawStart     = get(row, 'startDate');
-        const rawDue       = get(row, 'dueDate');
-        const rawProg      = get(row, 'progress');
-        const rawPct       = get(row, 'percentComplete');
-        const rawChecklist = get(row, 'checklistItem');   // e.g. "Design;Build;Test"
+    // Shared helper: parse dates + status + color from one row.
+    // Returns { startISO, dueISO, finalStart, finalEnd, status, pct, color, hasOwnDates, hasOwnProgress }
+    const parseRow = (row, nameForWarning) => {
+        const rawStart = get(row, 'startDate');
+        const rawDue   = get(row, 'dueDate');
+        const rawProg  = get(row, 'progress');
+        const rawPct   = get(row, 'percentComplete');
 
-        if (!rawName) { skipped++; continue; }
-
-        // ── Dates ─────────────────────────────────────────────────────────
         const startISO = parsePlannerDate(rawStart);
         const dueISO   = parsePlannerDate(rawDue);
 
@@ -202,101 +211,223 @@ function importPlannerRows(rows) {
         const effectiveStart = startISO || todayISO;
         const effectiveDue   = dueISO   || (startISO ? startISO : tmrISO);
 
-        if (new Date(effectiveStart) > new Date(effectiveDue)) {
-            warnings.push(`"${rawName}": start date is after due date – swapped.`);
+        if (nameForWarning && new Date(effectiveStart) > new Date(effectiveDue)) {
+            warnings.push(`"${nameForWarning}": start date is after due date – swapped.`);
         }
         const finalStart = new Date(effectiveStart) <= new Date(effectiveDue) ? effectiveStart : effectiveDue;
         const finalEnd   = new Date(effectiveStart) <= new Date(effectiveDue) ? effectiveDue   : effectiveStart;
 
-        // ── Progress / status ─────────────────────────────────────────────
         const pctRaw = rawPct !== '' ? parseProgress(rawPct) : parseProgress(rawProg);
         const pct    = pctRaw !== null ? pctRaw : null;
         const status = plannerProgressToStatus(rawProg, pct);
         const color  = (typeof STATUS_COLORS !== 'undefined' ? STATUS_COLORS[status] : null) || '#808080';
 
-        // ── Group = Task Name ─────────────────────────────────────────────
-        const groupName = rawName;
+        return {
+            startISO, dueISO, finalStart, finalEnd, status, pct, color,
+            hasOwnDates:    !!(startISO || dueISO),
+            hasOwnProgress: rawProg !== '' || rawPct !== '',
+        };
+    };
 
-        if (!groups[groupName]) {
-            groups[groupName]      = { name: groupName, color };
-            groupStates[groupName] = true;
-            groupOrder.push(groupName);
+    const pushTask = (name, group, p) => {
+        tasks.push({ id: idBase++, name, group, startDate: p.finalStart, endDate: p.finalEnd, status: p.status, progress: p.pct, color: p.color });
+        if (typeof applyAutoGroupStatus === 'function') applyAutoGroupStatus(group);
+        imported++;
+    };
+
+    const ensureGroup = (name, color) => {
+        if (!groups[name]) {
+            groups[name]      = { name, color };
+            groupStates[name] = true;
+            groupOrder.push(name);
         }
+    };
 
-        // ── Tasks = semicolon-split checklist items ────────────────────────
-        // Split on ";" and strip whitespace; filter out empty tokens.
-        const checklistItems = rawChecklist
-            ? rawChecklist.split(';').map(s => s.trim()).filter(Boolean)
-            : [];
+    // ── Mode 1: Task ID hierarchy (1 → group, 1.1 → subtask) ────────────────
+    if (_hasPlannerHierarchy(rows, hm)) {
+        let parent     = null;   // { name, ...parseRow result }
+        let hasSubs    = false;
 
-        if (checklistItems.length > 0) {
-            for (const itemName of checklistItems) {
-                tasks.push({
-                    id:        idBase++,
-                    name:      itemName,
-                    group:     groupName,
-                    startDate: finalStart,
-                    endDate:   finalEnd,
-                    status,
-                    progress:  pct,
-                    color,
-                });
-                imported++;
+        const flushParent = () => {
+            if (parent && !hasSubs) {
+                // Parent with no subtasks → one fallback task
+                pushTask(parent.name, parent.name, parent);
             }
-        } else {
-            // No checklist → one task named after the group
-            tasks.push({
-                id:        idBase++,
-                name:      groupName,
-                group:     groupName,
-                startDate: finalStart,
-                endDate:   finalEnd,
-                status,
-                progress:  pct,
-                color,
-            });
-            imported++;
-        }
+        };
 
-        if (typeof applyAutoGroupStatus === 'function') applyAutoGroupStatus(groupName);
+        for (const row of rows) {
+            const rawId   = get(row, 'taskId');
+            const rawName = get(row, 'taskName');
+            if (!rawName) { skipped++; continue; }
+
+            const isSubtask = /^\d+\.\d+/.test(rawId);
+
+            if (!isSubtask) {
+                // ── Parent row ─────────────────────────────────────────────
+                flushParent();
+                hasSubs = false;
+                const p = parseRow(row, rawName);
+                ensureGroup(rawName, p.color);
+                parent = { name: rawName, ...p };
+            } else {
+                // ── Subtask row ────────────────────────────────────────────
+                if (!parent) { skipped++; continue; }
+
+                const sub = parseRow(row, null);
+                // Prefer subtask's own dates / status; fall back to parent's
+                const p = {
+                    finalStart: sub.hasOwnDates    ? sub.finalStart : parent.finalStart,
+                    finalEnd:   sub.hasOwnDates    ? sub.finalEnd   : parent.finalEnd,
+                    status:     sub.hasOwnProgress ? sub.status     : parent.status,
+                    pct:        sub.hasOwnProgress ? sub.pct        : parent.pct,
+                    color:      sub.hasOwnProgress ? sub.color      : parent.color,
+                };
+                pushTask(rawName, parent.name, p);
+                hasSubs = true;
+            }
+        }
+        flushParent();
+
+    // ── Mode 2: Column-picker (semicolon checklist split) ────────────────────
+    } else {
+        for (const row of rows) {
+            const rawName      = get(row, 'taskName');
+            const rawChecklist = get(row, 'checklistItem');
+            if (!rawName) { skipped++; continue; }
+
+            const p = parseRow(row, rawName);
+            ensureGroup(rawName, p.color);
+
+            const items = rawChecklist
+                ? rawChecklist.split(';').map(s => s.trim()).filter(Boolean)
+                : [];
+
+            if (items.length > 0) {
+                for (const itemName of items) pushTask(itemName, rawName, p);
+            } else {
+                pushTask(rawName, rawName, p);
+            }
+        }
     }
 
     return { imported, skipped, warnings };
 }
 
+// ─── Column-picker modal state ───────────────────────────────────────────────
+let _plannerPendingRows  = null;
+let _plannerPendingInput = null;
+
+/**
+ * Populate the two dropdowns, pre-selecting the best guesses from the header map.
+ */
+function _populatePlannerDropdowns(headers, hm) {
+    const groupSel = document.getElementById('plannerGroupCol');
+    const taskSel  = document.getElementById('plannerTaskCol');
+    if (!groupSel || !taskSel) return;
+
+    groupSel.innerHTML = '';
+    taskSel.innerHTML  = '<option value="">(none – use group name as task)</option>';
+
+    for (const h of headers) {
+        groupSel.appendChild(new Option(h, h));
+        taskSel.appendChild(new Option(h, h));
+    }
+
+    // Smart defaults based on header map
+    if (hm.taskName)      groupSel.value = hm.taskName;
+    if (hm.checklistItem) taskSel.value  = hm.checklistItem;
+}
+
+function closePlannerColumnModal() {
+    const modal = document.getElementById('plannerColumnModal');
+    if (modal) modal.style.display = 'none';
+    if (_plannerPendingInput) _plannerPendingInput.value = '';
+    _plannerPendingRows  = null;
+    _plannerPendingInput = null;
+}
+
+function confirmPlannerColumnImport() {
+    const groupCol = document.getElementById('plannerGroupCol')?.value || '';
+    const taskCol  = document.getElementById('plannerTaskCol')?.value  || '';
+
+    const modal = document.getElementById('plannerColumnModal');
+    if (modal) modal.style.display = 'none';
+
+    const rows  = _plannerPendingRows;
+    const input = _plannerPendingInput;
+    _plannerPendingRows  = null;
+    _plannerPendingInput = null;
+
+    if (!rows) return;
+
+    const { imported, skipped, warnings } = importPlannerRows(rows, { groupCol, taskCol });
+
+    if (typeof markAsChanged === 'function') markAsChanged();
+    if (typeof updateGroupsList === 'function') updateGroupsList();
+    if (typeof updateChart === 'function') updateChart();
+    if (typeof updateGroupSuggestions === 'function') updateGroupSuggestions();
+
+    if (warnings.length) console.warn('[Planner Import] Warnings:', warnings);
+
+    if (imported > 0) {
+        const note = warnings.length ? ` (${warnings.length} warning${warnings.length>1?'s':''})` : '';
+        if (typeof showNotification === 'function')
+            showNotification(`Imported ${imported} task${imported !== 1 ? 's' : ''} from Planner${note}`, 'success');
+    } else {
+        if (typeof showNotification === 'function')
+            showNotification('No tasks could be imported. ' + (warnings[0] || 'Check column names.'), 'error');
+    }
+
+    if (input) input.value = '';
+}
+
 // ─── File entry point ────────────────────────────────────────────────────────
 /**
- * importFromPlanner(inputEl)
- * Called by the file input's onchange. Reads the chosen .xlsx/.csv/.xls file
- * and delegates to importPlannerRows().
+ * onPlannerFileSelected(inputEl)
+ * Called by the file input's onchange. Reads the file, parses to rows,
+ * then opens the column-picker modal so the user can choose which columns
+ * map to groups and tasks before committing the import.
  */
-function importFromPlanner(input) {
+function onPlannerFileSelected(input) {
     const file = input.files[0];
     if (!file) return;
     const name = file.name.toLowerCase();
 
     const onRows = (rows) => {
-        const { imported, skipped, warnings } = importPlannerRows(rows);
+        if (!rows || rows.length === 0) {
+            if (typeof showNotification === 'function') showNotification('No rows found in file.', 'error');
+            input.value = '';
+            return;
+        }
+        const headers = Object.keys(rows[0]);
+        const hm      = buildPlannerHeaderMap(headers);
 
-        if (typeof markAsChanged === 'function') markAsChanged();
-        if (typeof updateGroupsList === 'function') updateGroupsList();
-        if (typeof updateChart === 'function') updateChart();
-        if (typeof updateGroupSuggestions === 'function') updateGroupSuggestions();
-
-        if (warnings.length) {
-            console.warn('[Planner Import] Warnings:', warnings);
+        // Native Planner hierarchy detected (Task IDs like 1, 1.1, 1.2) → auto-import
+        if (_hasPlannerHierarchy(rows, hm)) {
+            const { imported, skipped, warnings } = importPlannerRows(rows);
+            if (typeof markAsChanged          === 'function') markAsChanged();
+            if (typeof updateGroupsList       === 'function') updateGroupsList();
+            if (typeof updateChart            === 'function') updateChart();
+            if (typeof updateGroupSuggestions === 'function') updateGroupSuggestions();
+            if (warnings.length) console.warn('[Planner Import] Warnings:', warnings);
+            if (imported > 0) {
+                const note = warnings.length ? ` (${warnings.length} warning${warnings.length>1?'s':''})` : '';
+                if (typeof showNotification === 'function')
+                    showNotification(`Imported ${imported} task${imported !== 1 ? 's' : ''} from Planner${note}`, 'success');
+            } else {
+                if (typeof showNotification === 'function')
+                    showNotification('No tasks could be imported. ' + (warnings[0] || 'Check column names.'), 'error');
+            }
+            input.value = '';
+            return;
         }
 
-        if (imported > 0) {
-            const note = warnings.length ? ` (${warnings.length} warning${warnings.length>1?'s':''})` : '';
-            if (typeof showNotification === 'function')
-                showNotification(`Imported ${imported} task${imported !== 1 ? 's' : ''} from Planner${note}`, 'success');
-        } else {
-            if (typeof showNotification === 'function')
-                showNotification('No tasks could be imported. ' + (warnings[0] || 'Check column names.'), 'error');
-        }
-
-        input.value = '';
+        // No hierarchy → show column-picker modal
+        _plannerPendingRows  = rows;
+        _plannerPendingInput = input;
+        _populatePlannerDropdowns(headers, hm);
+        const modal = document.getElementById('plannerColumnModal');
+        if (modal) modal.style.display = 'flex';
     };
 
     if (name.endsWith('.csv')) {
@@ -313,7 +444,6 @@ function importFromPlanner(input) {
         };
         reader.readAsText(file);
     } else {
-        // xlsx / xls
         const reader = new FileReader();
         reader.onload = (e) => {
             try {

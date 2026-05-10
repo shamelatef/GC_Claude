@@ -256,7 +256,7 @@
 
         <input type="file" id="fileInput" class="file-input" accept=".json" onchange="loadFromFile(this)">
         <input type="file" id="excelInput" class="file-input" accept=".xlsx,.csv" onchange="importFromExcel(this)">
-        <input type="file" id="plannerInput" class="file-input" accept=".xlsx,.csv,.xls" onchange="importFromPlanner(this)">
+        <input type="file" id="plannerInput" class="file-input" accept=".xlsx,.csv,.xls" onchange="onPlannerFileSelected(this)">
 
         <div class="groups-list" id="groupsList" style="display:none" aria-hidden="true"></div>
 
@@ -289,6 +289,30 @@
             <div class="actions">
                 <button class="btn btn-secondary btn-secondary-ghost" onclick="closeProgressModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="confirmProgressModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Planner Column Picker Modal -->
+    <div class="modal-backdrop" id="plannerColumnModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="plannerColumnTitle" style="min-width:340px;max-width:460px;">
+            <h3 id="plannerColumnTitle">Import from Planner</h3>
+            <p style="font-size:13px;color:#555;margin:-4px 0 14px;">Choose which columns map to groups and tasks in your Gantt chart.</p>
+            <div class="modal-body" style="display:grid;gap:14px;">
+                <label style="display:grid;gap:6px;font-size:14px;">
+                    <span style="font-weight:600;">Group Name Column</span>
+                    <span style="font-size:12px;color:#777;">Each unique value becomes a Gantt group (row header)</span>
+                    <select id="plannerGroupCol" style="padding:9px 10px;border:2px solid #e1e8ed;border-radius:8px;font-size:14px;background:#fff;"></select>
+                </label>
+                <label style="display:grid;gap:6px;font-size:14px;">
+                    <span style="font-weight:600;">Task Name Column</span>
+                    <span style="font-size:12px;color:#777;">Values here become individual tasks (semicolon-separated splits into multiple tasks)</span>
+                    <select id="plannerTaskCol" style="padding:9px 10px;border:2px solid #e1e8ed;border-radius:8px;font-size:14px;background:#fff;"></select>
+                </label>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="closePlannerColumnModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmPlannerColumnImport()">Import</button>
             </div>
         </div>
     </div>
