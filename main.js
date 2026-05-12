@@ -165,14 +165,18 @@ const STATUS_COLORS = {
 // Priority (highest to lowest): Blocked > Action Needed > Delayed > In Progress > Completed > Not Started
 function deriveGroupStatusFromTasks(groupName) {
     const groupTasks = tasks.filter(t => t.group === groupName);
-    if (groupTasks.length === 0) return undefined; // leave as-is if no tasks
+    if (groupTasks.length === 0) return undefined;
 
-    const statuses = new Set(groupTasks.map(t => t.status || 'Not Started'));
-    if (statuses.has('Blocked')) return 'Blocked';
-    if (statuses.has('Action Needed')) return 'Action Needed';
-    if (statuses.has('Delayed')) return 'Delayed';
-    if (statuses.has('In Progress')) return 'In Progress';
-    // If every task is Completed -> Completed; else default Not Started
+    // A task with numeric progress > 0 is treated as at least In Progress
+    const statuses = new Set(groupTasks.map(t => {
+        if (typeof t.progress === 'number' && t.progress >= 100) return 'Completed';
+        if (typeof t.progress === 'number' && t.progress > 0)    return 'In Progress';
+        return t.status || 'Not Started';
+    }));
+    if (statuses.has('Blocked'))        return 'Blocked';
+    if (statuses.has('Action Needed'))  return 'Action Needed';
+    if (statuses.has('Delayed'))        return 'Delayed';
+    if (statuses.has('In Progress'))    return 'In Progress';
     const allCompleted = groupTasks.every(t => (t.status || 'Not Started') === 'Completed');
     return allCompleted ? 'Completed' : 'Not Started';
 }
@@ -486,6 +490,17 @@ function syncGlobalsFromActive() {
     groups = JSON.parse(JSON.stringify(p.groups || {}));
     groupStates = JSON.parse(JSON.stringify(p.groupStates || {}));
     groupOrder = JSON.parse(JSON.stringify(p.groupOrder || Object.keys(p.groups || {})));
+    // Normalize: any task with progress > 0 is In Progress; progress >= 100 is Completed
+    tasks.forEach(t => {
+        if (typeof t.progress !== 'number') return;
+        if (t.progress >= 100 && t.status !== 'Completed') {
+            t.status = 'Completed';
+            t.color = STATUS_COLORS['Completed'];
+        } else if (t.progress > 0 && t.progress < 100) {
+            t.status = 'In Progress';
+            t.color = STATUS_COLORS['In Progress'];
+        }
+    });
 }
 
 // Generic edit modal logic for task/group name edits
@@ -3316,10 +3331,10 @@ function confirmProgressModal() {
     const t = tasks.find(x => x.id === progressModalTaskId);
     if (!t) { closeProgressModal(); return; }
     t.progress = pct;
-    // Auto-sync status
-    if (pct === 100 && t.status !== 'Completed') t.status = 'Completed';
-    else if (pct > 0 && pct < 100 && t.status === 'Not Started') t.status = 'In Progress';
-    else if (pct === 0 && t.status === 'Completed') t.status = 'In Progress';
+    // Auto-sync status: progress drives status unconditionally
+    if (pct >= 100)  t.status = 'Completed';
+    else if (pct > 0) t.status = 'In Progress';
+    else if (pct === 0 && t.status === 'Completed') t.status = 'Not Started';
     t.color = STATUS_COLORS[t.status] || t.color;
     if (t.group) applyAutoGroupStatus(t.group);
     markAsChanged();
