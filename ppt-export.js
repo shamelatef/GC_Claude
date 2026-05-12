@@ -699,9 +699,10 @@ function exportToPPT(mode) {
     // PAGINATION + RENDER
     // ══════════════════════════════════════════════════════════════════════
     function taskRowH(t) {
-        // Column available for the task name = GRP_TEXT_X → TX
-        const colW = TX - GRP_TEXT_X;
-        return estW((t.name || '').toUpperCase(), TASK_FS) > colW ? TASK_H_2 : TASK_H_1;
+        // Estimate lines needed, then allocate height proportionally (same logic as groupOnlyRowH).
+        const colW  = TX - GRP_TEXT_X;
+        const lines = Math.max(1, Math.ceil(estW((t.name || '').toUpperCase(), TASK_FS) / colW));
+        return Math.min(lines * 0.20 + 0.20, 1.00);   // ~0.40" per line, cap at 1.00"
     }
 
     function groupOnlyRowH(g, count) {
@@ -716,17 +717,26 @@ function exportToPPT(mode) {
     }
 
     function paginate(rows) {
+        // Scale a page's rows to evenly fill CONTENT_H (cap at 1.30× to avoid
+        // rows becoming too tall; the last/only page may have fewer rows and
+        // benefits most from this fill).
+        const scaleToFit = (pg) => {
+            const pgH  = pg.reduce((a, r) => a + r.rowH, 0);
+            const sc   = Math.min(1.30, CONTENT_H / Math.max(pgH, 0.01));
+            return pg.map(r => ({ ...r, rowH: r.rowH * sc }));
+        };
+
         const totalH = rows.reduce((a, r) => a + r.rowH, 0);
-        if (totalH <= CONTENT_H) {
-            const scale = Math.min(1.20, CONTENT_H / Math.max(totalH, 0.01));
-            return [rows.map(r => ({ ...r, rowH: r.rowH * scale }))];
-        }
+        if (totalH <= CONTENT_H) return [scaleToFit(rows)];
+
         const pages = []; let page = [], used = 0;
         for (const r of rows) {
-            if (used + r.rowH > CONTENT_H && page.length) { pages.push(page); page = []; used = 0; }
+            if (used + r.rowH > CONTENT_H && page.length) {
+                pages.push(scaleToFit(page)); page = []; used = 0;
+            }
             page.push(r); used += r.rowH;
         }
-        if (page.length) pages.push(page);
+        if (page.length) pages.push(scaleToFit(page));
         return pages;
     }
 
