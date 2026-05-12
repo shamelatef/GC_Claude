@@ -1832,6 +1832,8 @@ function updateTaskStatus(taskId, status) {
     if (!t) return;
     t.status = status;
     t.color = STATUS_COLORS[status] || '#808080';
+    if (status === 'Completed')   t.progress = 100;
+    if (status === 'Not Started') t.progress = 0;
     // Auto-sync owning group status from tasks
     if (t.group) applyAutoGroupStatus(t.group);
     markAsChanged();
