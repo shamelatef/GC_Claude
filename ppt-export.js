@@ -609,27 +609,34 @@ function exportToPPT(mode) {
         const gColor = (groups[row.group]?.color || '#808080').replace('#', '');
         const x1 = dToX(row.gStart), x2 = dToX(row.gEnd);
         if (x1 === null || x2 === null) return;
-        const bw   = Math.max(0, x2 - x1);
-        // Chevron height: fixed 0.28" so it looks the same regardless of row height
-        const barH = 0.28;
-        const barY = y + (h - barH) / 2;   // always centred in the (tall) row
+        const bw  = Math.max(0, x2 - x1);
+        const pct = groupProgress(row.group);
+
+        // Layout: chevron + optional progress track below it
+        const barH     = 0.26;
+        const trackH   = 0.06;
+        const trackGap = 0.04;
+        const hasTrack = pct !== null && bw >= 0.04;
+        const zoneH    = hasTrack ? barH + trackGap + trackH : barH;
+        const barY     = y + (h - zoneH) / 2;
+        const trackY   = barY + barH + trackGap;
+        const minW     = Math.max(0.28, bw);
+
         const label = (row.group || '') + (row.count > 0 ? ` (${row.count})` : '');
 
-        // ── Layer 1: Lavender background — name column only (GX → TX) ───
+        // ── Layer 1: Background — name column ────────────────────────────
         slide.addShape(pptx.shapes.RECTANGLE, {
             x:GX, y:y + 0.02, w:TX - GX, h:h - 0.04,
             fill:{color:C.groupHdr}, line:{color:C.groupBorder, width:0.75}
         });
 
-        // ── Layer 2: Accent bar — matches the group's chevron colour ─────
+        // ── Layer 2: Accent bar ───────────────────────────────────────────
         slide.addShape(pptx.shapes.RECTANGLE, {
             x:GX, y:y + 0.02, w:ACCENT_W, h:h - 0.04,
             fill:{color:gColor}, line:{color:gColor}
         });
 
-        // ── Layer 3: Group name — constrained to name column, wraps freely ─
-        // Width = GRP_TEXT_X → TX so it never enters the timeline zone.
-        // wrap:true  so multi-word names can flow onto 2+ lines.
+        // ── Layer 3: Group name ───────────────────────────────────────────
         slide.addText(label, {
             x:GRP_TEXT_X, y, w:TX - GRP_TEXT_X, h,
             fontSize:GRP_FS, bold:true, color:C.groupText,
@@ -637,7 +644,7 @@ function exportToPPT(mode) {
             wrap:true
         });
 
-        // ── Layer 4: Chevron / diamond with progress fill ────────────────
+        // ── Layer 4: Chevron / diamond ────────────────────────────────────
         if (bw < 0.04) {
             const sz = 0.16;
             slide.addShape(pptx.shapes.DIAMOND, {
@@ -645,19 +652,45 @@ function exportToPPT(mode) {
                 fill:{color:gColor}, line:{color:gColor}
             });
         } else {
-            const pct = groupProgress(row.group);
             drawChevronWithProgress(slide, x1, barY, bw, barH, gColor, pct);
-        }
 
-        // ── Layer 6: Date range right of chevron ──────────────────────────
-        const dateX = x2 + 0.12;
-        const dateW = (W - MARGIN_R) - dateX;
-        if (dateW > 0.25) {
-            slide.addText(fmtRange(row.gStart, row.gEnd), {
-                x:dateX, y:barY, w:dateW, h:barH,
-                fontSize:9, color:C.dateText,
-                fontFace:'Segoe UI', align:'left', valign:'middle', wrap:false
-            });
+            // ── Layer 5a: % label overlaid on chevron (white, centred) ────
+            if (pct !== null) {
+                slide.addText(`${pct}%`, {
+                    x:x1, y:barY, w:minW, h:barH,
+                    fontSize:8, bold:true, color:'FFFFFF',
+                    fontFace:'Segoe UI', align:'center', valign:'middle',
+                    wrap:false
+                });
+            }
+
+            // ── Layer 5b: Thin progress track below chevron ───────────────
+            if (hasTrack && trackY + trackH <= y + h - 0.01) {
+                // Background pill
+                slide.addShape(pptx.shapes.RECTANGLE, {
+                    x:x1, y:trackY, w:minW, h:trackH,
+                    fill:{color:'E8E8E8'}, line:{color:'CCCCCC', width:0.5}
+                });
+                // Filled portion
+                if (pct > 0) {
+                    const fillW = Math.max(0.04, minW * pct / 100);
+                    slide.addShape(pptx.shapes.RECTANGLE, {
+                        x:x1, y:trackY, w:fillW, h:trackH,
+                        fill:{color:gColor}, line:{color:gColor}
+                    });
+                }
+            }
+
+            // ── Layer 6: Date range right of bar ──────────────────────────
+            const dateX = x1 + minW + 0.10;
+            const dateW = (W - MARGIN_R) - dateX;
+            if (dateW > 0.25) {
+                slide.addText(fmtRange(row.gStart, row.gEnd), {
+                    x:dateX, y:barY, w:dateW, h:barH,
+                    fontSize:9, color:C.dateText,
+                    fontFace:'Segoe UI', align:'left', valign:'middle', wrap:false
+                });
+            }
         }
     }
 
@@ -681,14 +714,15 @@ function exportToPPT(mode) {
     }
 
     function groupOnlyRowH(g, count) {
-        // Estimate how many lines the label will occupy in the name column,
-        // then return a row height that gives the text breathing room.
         const label  = (g || '') + (count > 0 ? ` (${count})` : '');
         const colW   = TX - GRP_TEXT_X;
         const lines  = Math.max(1, Math.ceil(estW(label, GRP_FS) / colW));
-        const lineH  = 0.19;   // approx inches per line at 11pt with leading
-        const padV   = 0.18;   // top + bottom padding inside the row
-        return Math.min(lines * lineH + padV, 1.20);  // cap at 1.20"
+        const lineH  = 0.19;
+        const padV   = 0.18;
+        const textH  = lines * lineH + padV;
+        // Must fit: chevron (0.26) + gap (0.04) + progress track (0.06) + padding (0.18)
+        const minH   = 0.54;
+        return Math.min(Math.max(textH, minH), 1.40);
     }
 
     function paginate(rows) {
