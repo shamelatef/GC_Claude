@@ -501,6 +501,8 @@ function syncGlobalsFromActive() {
             t.color = STATUS_COLORS['In Progress'];
         }
     });
+    // Re-derive group statuses so groups with any task progress > 0 turn green too
+    Object.keys(groups).forEach(g => applyAutoGroupStatus(g));
 }
 
 // Generic edit modal logic for task/group name edits
