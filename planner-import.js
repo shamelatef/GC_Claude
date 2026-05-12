@@ -401,20 +401,40 @@ function confirmPlannerColumnImport() {
 // ─── Metadata-skip helper ────────────────────────────────────────────────────
 /**
  * Given raw row arrays (from sheet_to_json with header:1), find the index of
- * the first row that looks like a column-header row.
- * Heuristic: a row with ≥2 non-empty cells, at least one of which matches a
- * known header keyword.
+ * the real column-header row by scoring each candidate row.
+ *
+ * A cell scores as a header if its normalised value STARTS WITH a known
+ * header keyword (e.g. "task number" → "task", "start" → "start").
+ * "Project name" starts with "project" (not in the keyword list) so it
+ * scores 0, while row 9 of an MS-Project export scores 6.
+ * The row with the highest score (minimum 2 matches) is chosen.
  */
 function _findHeaderRowIndex(rawArrays) {
-    const keywords = /name|task|outline|start|finish|due|assign|status|progress|wbs|id|checklist/i;
+    const headerWords = new Set([
+        'task','name','title','outline','start','finish','due','end',
+        'assigned','assign','status','progress','wbs','id','checklist',
+        'bucket','priority','complete','notes','description','percent',
+    ]);
+    const cellScore = (c) => {
+        const norm = String(c ?? '').toLowerCase().trim();
+        if (!norm) return 0;
+        for (const w of headerWords) {
+            if (norm === w || norm.startsWith(w + ' ') || norm.startsWith(w + '_')) return 1;
+        }
+        return 0;
+    };
+
+    let bestIdx   = 0;
+    let bestScore = 0;
     for (let i = 0; i < Math.min(rawArrays.length, 20); i++) {
-        const row = rawArrays[i];
-        const nonEmpty = row.filter(c => c !== '' && c != null);
-        if (nonEmpty.length >= 2 && nonEmpty.some(c => keywords.test(String(c)))) {
-            return i;
+        const row     = rawArrays[i];
+        const matches = row.reduce((s, c) => s + cellScore(c), 0);
+        if (matches >= 2 && matches > bestScore) {
+            bestScore = matches;
+            bestIdx   = i;
         }
     }
-    return 0; // fall back to first row
+    return bestIdx;
 }
 
 /**
