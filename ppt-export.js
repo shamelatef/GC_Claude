@@ -542,13 +542,25 @@ function exportToPPT(mode, expandedGroups) {
             fill:{color:gColor}, line:{color:gColor}
         });
 
-        // 3 — Label text: spans the full lavender bar width (GRP_TEXT_X → right margin).
+        // 3 — Label text: spans left portion; leave 0.55" on the right for the % badge
+        const pct = groupProgress(row.group);
+        const labelW = W - GRP_TEXT_X - MARGIN_R - (pct !== null && !row.isContinuation ? 0.55 : 0);
         slide.addText(label, {
-            x:GRP_TEXT_X, y:y + 0.01, w:W - GRP_TEXT_X - MARGIN_R, h:h - 0.02,
+            x:GRP_TEXT_X, y:y + 0.01, w:labelW, h:h - 0.02,
             fontSize:GRP_FS, bold:true, color:C.groupText,
             fontFace:'Segoe UI', align:'left', valign:'middle',
             wrap:false, autoFitType:'shrink'
         });
+
+        // 4 — Progress % right-aligned on the header bar
+        if (pct !== null && !row.isContinuation) {
+            slide.addText(`${pct}%`, {
+                x:W - MARGIN_R - 0.55, y:y + 0.01, w:0.50, h:h - 0.02,
+                fontSize:GRP_FS, bold:true, color:C.groupText,
+                fontFace:'Segoe UI', align:'right', valign:'middle',
+                wrap:false
+            });
+        }
 
     }
 
@@ -586,6 +598,16 @@ function exportToPPT(mode, expandedGroups) {
         } else {
             const pct = typeof t.progress === 'number' ? t.progress : null;
             drawChevronWithProgress(slide, x1, barY, bw, barH, tColor, pct);
+            // % label overlaid on chevron in white
+            if (pct !== null) {
+                const minW = Math.max(0.28, bw);
+                slide.addText(`${pct}%`, {
+                    x:x1, y:barY, w:minW, h:barH,
+                    fontSize:8, bold:true, color:'FFFFFF',
+                    fontFace:'Segoe UI', align:'center', valign:'middle',
+                    wrap:false
+                });
+            }
         }
 
         // ── Date range label — right of bar ─────────────────────────────
