@@ -526,7 +526,7 @@ function exportToPPT(mode) {
     // GROUP HEADER — compact, no timeline bar
     // ══════════════════════════════════════════════════════════════════════
     function drawGroupHeader(slide, row, y, h) {
-        const label  = (row.group || '') + (row.count > 0 ? ` (${row.count})` : '');
+        const label  = (row.group || '') + (row.isContinuation ? ' (cont.)' : (row.count > 0 ? ` (${row.count})` : ''));
         const gColor = (groups[row.group]?.color || '#3D4A5C').replace('#', '');
 
         // 1 — Full-width lavender background (always rendered first so it sits behind text)
@@ -692,27 +692,43 @@ function exportToPPT(mode) {
     }
 
     function paginate(rows) {
-        // Scale a page's rows to evenly fill CONTENT_H (cap at 1.30× to avoid
-        // rows becoming too tall; the last/only page may have fewer rows and
-        // benefits most from this fill).
         const scaleToFit = (pg) => {
-            const pgH  = pg.reduce((a, r) => a + r.rowH, 0);
-            const sc   = Math.min(1.30, CONTENT_H / Math.max(pgH, 0.01));
+            const pgH = pg.reduce((a, r) => a + r.rowH, 0);
+            const sc  = Math.min(1.30, CONTENT_H / Math.max(pgH, 0.01));
             return pg.map(r => ({ ...r, rowH: r.rowH * sc }));
         };
 
         const totalH = rows.reduce((a, r) => a + r.rowH, 0);
         if (totalH <= CONTENT_H) return [scaleToFit(rows)];
 
-        const pages = []; let page = [], used = 0;
+        // Step 1: raw split into pages
+        const rawPages = []; let page = [], used = 0;
         for (const r of rows) {
             if (used + r.rowH > CONTENT_H && page.length) {
-                pages.push(scaleToFit(page)); page = []; used = 0;
+                rawPages.push(page); page = []; used = 0;
             }
             page.push(r); used += r.rowH;
         }
-        if (page.length) pages.push(scaleToFit(page));
-        return pages;
+        if (page.length) rawPages.push(page);
+
+        // Step 2: inject a "(cont.)" group header when a page starts mid-group
+        // Build a lookup: groupName → the original group row (for gStart/gEnd/count)
+        const groupRowFor = {};
+        rows.forEach(r => { if (r.type === 'group') groupRowFor[r.group] = r; });
+
+        const processed = rawPages.map((pg, pi) => {
+            if (pi === 0) return pg;
+            const first = pg[0];
+            if (!first || first.type !== 'task') return pg;
+            const src = groupRowFor[first.group];
+            if (!src) return pg;
+            // Prepend a continuation header (same height as a normal group header)
+            const contRow = { ...src, isContinuation: true, rowH: GRP_H };
+            return [contRow, ...pg];
+        });
+
+        // Step 3: scale each page to fill CONTENT_H
+        return processed.map(scaleToFit);
     }
 
     const safeName = (projects[activeProjectIndex]?.name || 'Gantt').replace(/[^\w\-]+/g, '_');
