@@ -192,21 +192,10 @@ function exportToPPT(mode) {
 
     // ── Axis ──────────────────────────────────────────────────────────────
     const totalDays = Math.max(1, days(minDate, maxDate));
-    const unit = totalDays <= 80 ? 'week' : totalDays <= 400 ? 'month' : 'quarter';
+    const unit = totalDays <= 400 ? 'month' : 'quarter';
 
     function buildAxis() {
         const cells = [];
-
-        if (unit === 'week') {
-            const start = weekMon(minDate);
-            let cur = new Date(start), i = 1;
-            while (cur <= maxDate) {
-                const next = new Date(cur); next.setDate(next.getDate() + 7);
-                cells.push({ label:`Wk ${i}`, start:new Date(cur), end:new Date(next) });
-                cur = next; i++;
-            }
-            return { axisStart:start, axisEnd:cells[cells.length-1].end, cells };
-        }
 
         if (unit === 'month') {
             const start = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
@@ -249,11 +238,9 @@ function exportToPPT(mode) {
     const axisMs = axis.axisEnd - axis.axisStart;
 
     // Pill total height depends on unit
-    const PILL_AREA_H = unit === 'week'
-        ? ROW_FY_H + ROW_MO_H               // 2 rows: month+year header + week numbers
-        : unit === 'month'
-            ? ROW_FY_H + ROW_QT_H + ROW_MO_H  // 3 rows
-            : ROW_FY_H + ROW_QT_H;             // 2 rows (quarter)
+    const PILL_AREA_H = unit === 'month'
+        ? ROW_FY_H + ROW_QT_H + ROW_MO_H   // 3 rows: FY / Quarter / Month
+        : ROW_FY_H + ROW_QT_H;             // 2 rows: FY / Quarter
 
     const PILL_TOP    = H - MARGIN_B - MS_AREA - PILL_AREA_H;
     const CONTENT_TOP = MARGIN_T + 0.04;
@@ -293,72 +280,7 @@ function exportToPPT(mode) {
         }
 
         // ── Multi-row timeline pill ───────────────────────────────────────
-        if (unit === 'week') {
-            // ── Row 1: Month + Year (grouped spans) ──────────────────────
-            const moRowY = PILL_TOP;
-            const wkRowY = PILL_TOP + ROW_FY_H;
-
-            // Group consecutive week cells by calendar month
-            const moGroups = [];
-            const moMap    = new Map();
-            axis.cells.forEach(c => {
-                const m   = c.start.getMonth();
-                const y   = c.start.getFullYear();
-                const key = `${y}-${m}`;
-                if (!moMap.has(key)) {
-                    moMap.set(key, { label:`${MN[m]} ${y}`, cells:[] });
-                    moGroups.push(moMap.get(key));
-                }
-                moMap.get(key).cells.push(c);
-            });
-
-            // Full pill background (dark)
-            slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
-                x:TX, y:moRowY, w:TW, h:PILL_AREA_H, rectRadius:0.05,
-                fill:{color:C.pillFY}, line:{color:C.pillFY}
-            });
-
-            // Month band (slightly lighter) on top row
-            slide.addShape(pptx.shapes.RECTANGLE, {
-                x:TX, y:moRowY, w:TW, h:ROW_FY_H,
-                fill:{color:C.pillFY}, line:{color:C.pillFY}
-            });
-
-            moGroups.forEach((mg, gi) => {
-                const x1 = dToX(mg.cells[0].start);
-                const x2 = dToX(mg.cells[mg.cells.length - 1].end);
-                const mw  = Math.max(0, x2 - x1);
-                if (gi > 0) slide.addShape(pptx.shapes.LINE, {
-                    x:x1, y:moRowY, w:0, h:PILL_AREA_H,
-                    line:{color:C.pillDivider, width:1, transparency:40}
-                });
-                slide.addText(mg.label, {
-                    x:x1, y:moRowY, w:mw, h:ROW_FY_H,
-                    fontSize:9, bold:true, color:'FFFFFF',
-                    fontFace:'Segoe UI', align:'center', valign:'middle'
-                });
-            });
-
-            // ── Row 2: Week numbers ───────────────────────────────────────
-            slide.addShape(pptx.shapes.RECTANGLE, {
-                x:TX, y:wkRowY, w:TW, h:ROW_MO_H,
-                fill:{color:C.pillMO}, line:{color:C.pillMO}
-            });
-            const cW = TW / axis.cells.length;
-            axis.cells.forEach((c, i) => {
-                const cx = TX + i * cW;
-                if (i > 0) slide.addShape(pptx.shapes.LINE, {
-                    x:cx, y:wkRowY + 0.03, w:0, h:ROW_MO_H - 0.06,
-                    line:{color:C.pillDivider, width:0.5, transparency:55}
-                });
-                slide.addText(c.label, {
-                    x:cx, y:wkRowY, w:cW, h:ROW_MO_H,
-                    fontSize:9, bold:false, color:'FFFFFF',
-                    fontFace:'Segoe UI', align:'center', valign:'middle'
-                });
-            });
-
-        } else if (unit === 'month') {
+        if (unit === 'month') {
             // ── Row 1: Fiscal Year ──────────────────────────────────────
             const fyRowY = PILL_TOP;
             // Build unique FY groups in order
@@ -650,7 +572,7 @@ function exportToPPT(mode) {
             x:GRP_TEXT_X, y, w:TX - GRP_TEXT_X, h:ch,
             fontSize:TASK_FS, bold:true, color:C.ink,
             fontFace:'Segoe UI', align:'left', valign:'middle',
-            wrap:false, autoFitType:'shrink'
+            wrap:true
         });
 
         // ── Chevron / diamond with progress fill ─────────────────────────
@@ -745,21 +667,17 @@ function exportToPPT(mode) {
     const TASK_GAP    = 0.14;   // whitespace below each task row
     const TASK_MAX_LINES = 2;   // never let a task name exceed 2 lines in the PPT
 
-    // Normalize and truncate a task name to a single display line.
-    // Strips embedded newlines (multi-line Excel cells), collapses whitespace,
-    // then truncates to the estimated chars-per-line of the name column + "..".
+    // Normalize a task name: collapse embedded newlines/tabs to spaces.
+    // Full name is preserved — no truncation.
     function taskDisplayName(name) {
-        const colW  = TX - GRP_TEXT_X;
-        // Collapse any embedded line-breaks / tabs to a single space
-        const upper = (name || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().toUpperCase();
-        const cpl   = Math.max(1, Math.floor(colW / (TASK_FS * 0.0065))); // slightly conservative
-        if (upper.length <= cpl) return upper;
-        return upper.slice(0, cpl - 2).trimEnd() + '..';
+        return (name || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().toUpperCase();
     }
 
     function taskRowH(t) {
-        // Single-line rows now that taskDisplayName always returns a 1-line string
-        return 0.20 + 0.20 + TASK_GAP;   // content height + gap
+        const colW   = TX - GRP_TEXT_X;
+        const display = taskDisplayName(t.name);
+        const lines  = Math.max(1, Math.ceil(estW(display, TASK_FS) / colW));
+        return lines * 0.20 + 0.20 + TASK_GAP;   // content + gap
     }
 
     function groupOnlyRowH(g, count) {
