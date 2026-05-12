@@ -726,9 +726,12 @@ function exportToPPT(mode) {
     }
 
     function paginate(rows) {
+        // Only scale UP (fill empty space). Never shrink — font size doesn't scale
+        // with rowH, so shrinking causes text to overflow its allocated box.
         const scaleToFit = (pg) => {
             const pgH = pg.reduce((a, r) => a + r.rowH, 0);
             const sc  = Math.min(1.30, CONTENT_H / Math.max(pgH, 0.01));
+            if (sc <= 1.0) return pg;
             return pg.map(r => ({ ...r, rowH: r.rowH * sc }));
         };
 
@@ -745,23 +748,42 @@ function exportToPPT(mode) {
         }
         if (page.length) rawPages.push(page);
 
-        // Step 2: inject a "(cont.)" group header when a page starts mid-group
-        // Build a lookup: groupName → the original group row (for gStart/gEnd/count)
+        // Step 2: inject cont. headers — make room first so the page stays within CONTENT_H.
+        // If adding GRP_H would push the page over the limit, pop rows off the end
+        // and prepend them to the next page before injecting the header.
         const groupRowFor = {};
         rows.forEach(r => { if (r.type === 'group') groupRowFor[r.group] = r; });
 
-        const processed = rawPages.map((pg, pi) => {
-            if (pi === 0) return pg;
+        const processed = [];
+        for (let pi = 0; pi < rawPages.length; pi++) {
+            const pg = rawPages[pi];
+            if (pi === 0) { processed.push(pg); continue; }
             const first = pg[0];
-            if (!first || first.type !== 'task') return pg;
+            if (!first || first.type !== 'task') { processed.push(pg); continue; }
             const src = groupRowFor[first.group];
-            if (!src) return pg;
-            // Prepend a continuation header (same height as a normal group header)
-            const contRow = { ...src, isContinuation: true, rowH: GRP_H };
-            return [contRow, ...pg];
-        });
+            if (!src) { processed.push(pg); continue; }
 
-        // Step 3: scale each page to fill CONTENT_H
+            const contRow = { ...src, isContinuation: true, rowH: GRP_H };
+            // Pop rows off this page until cont. header fits
+            const working = [...pg];
+            let pgH = working.reduce((a, r) => a + r.rowH, 0) + contRow.rowH;
+            const spill = [];
+            while (pgH > CONTENT_H && working.length > 1) {
+                spill.unshift(working.pop());
+                pgH -= spill[0].rowH;
+            }
+            // Prepend spilled rows to the next raw page (or create a new one)
+            if (spill.length) {
+                if (pi + 1 < rawPages.length) {
+                    rawPages[pi + 1] = [...spill, ...rawPages[pi + 1]];
+                } else {
+                    rawPages.push(spill);
+                }
+            }
+            processed.push([contRow, ...working]);
+        }
+
+        // Step 3: scale each page upward to fill CONTENT_H (never down)
         return processed.map(scaleToFit);
     }
 
