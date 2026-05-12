@@ -47,7 +47,9 @@ function buildPlannerHeaderMap(headers) {
     for (const h of headers) {
         const nk = normKey(h);
         for (const [field, patterns] of rules) {
-            if (!map[field] && patterns.some(p => nk === p || nk.startsWith(p))) {
+            // Short patterns (< 6 chars) must be an exact match to avoid
+            // "task" matching "tasknumber", "id" matching "idnumber", etc.
+            if (!map[field] && patterns.some(p => nk === p || (p.length >= 6 && nk.startsWith(p)))) {
                 map[field] = h;
                 break;
             }
