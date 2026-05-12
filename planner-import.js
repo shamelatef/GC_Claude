@@ -28,7 +28,7 @@ function buildPlannerHeaderMap(headers) {
     const map = {};
     const rules = [
         // canonical key → list of normalised header patterns that match
-        ['taskId',          ['taskid','id']],
+        ['taskId',          ['taskid','id','outlinenumber','outline','wbs','outlinenum']],
         ['taskName',        ['taskname','name','title','task']],
         ['bucket',          ['bucketname','bucket','sprint','epic','group','phase','category']],
         ['progress',        ['progress','state','status','taskstatus']],
@@ -398,6 +398,40 @@ function confirmPlannerColumnImport() {
     if (input) input.value = '';
 }
 
+// ─── Metadata-skip helper ────────────────────────────────────────────────────
+/**
+ * Given raw row arrays (from sheet_to_json with header:1), find the index of
+ * the first row that looks like a column-header row.
+ * Heuristic: a row with ≥2 non-empty cells, at least one of which matches a
+ * known header keyword.
+ */
+function _findHeaderRowIndex(rawArrays) {
+    const keywords = /name|task|outline|start|finish|due|assign|status|progress|wbs|id|checklist/i;
+    for (let i = 0; i < Math.min(rawArrays.length, 20); i++) {
+        const row = rawArrays[i];
+        const nonEmpty = row.filter(c => c !== '' && c != null);
+        if (nonEmpty.length >= 2 && nonEmpty.some(c => keywords.test(String(c)))) {
+            return i;
+        }
+    }
+    return 0; // fall back to first row
+}
+
+/**
+ * Convert raw-array rows (from sheet_to_json header:1) into objects using the
+ * header row at headerIdx, skipping blank rows.
+ */
+function _arraysToObjects(rawArrays, headerIdx) {
+    const headers = rawArrays[headerIdx].map(c => String(c ?? ''));
+    return rawArrays.slice(headerIdx + 1)
+        .map(arr => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = arr[i] ?? ''; });
+            return obj;
+        })
+        .filter(row => headers.some(h => h && String(row[h] ?? '').trim() !== ''));
+}
+
 // ─── File entry point ────────────────────────────────────────────────────────
 /**
  * onPlannerFileSelected(inputEl)
@@ -464,11 +498,14 @@ function onPlannerFileSelected(input) {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const data = new Uint8Array(e.target.result);
-                const wb   = XLSX.read(data, { type: 'array', cellDates: false });
-                const ws   = wb.Sheets[wb.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
-                onRows(rows.map(r => ({ ...r })));
+                const data      = new Uint8Array(e.target.result);
+                const wb        = XLSX.read(data, { type: 'array', cellDates: false });
+                const ws        = wb.Sheets[wb.SheetNames[0]];
+                // Use raw arrays so we can detect and skip metadata rows (e.g. MS Project exports)
+                const rawArrays = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+                const headerIdx = _findHeaderRowIndex(rawArrays);
+                const rows      = _arraysToObjects(rawArrays, headerIdx);
+                onRows(rows);
             } catch(err) {
                 console.error(err);
                 if (typeof showNotification === 'function') showNotification('Error reading Excel file', 'error');
