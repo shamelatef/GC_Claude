@@ -248,6 +248,10 @@
                             <span class="kebab-item-icon">📁</span>
                             <span>Export to PowerPoint — groups only</span>
                         </div>
+                        <div class="kebab-item" role="menuitem" onclick="openPptMixedModal(); this.closest('.kebab-dropdown')?.classList.remove('show');">
+                            <span class="kebab-item-icon">🔀</span>
+                            <span>Export to PowerPoint — custom (choose groups)</span>
+                        </div>
                     </div>
                 </div>
 
@@ -289,6 +293,23 @@
             <div class="actions">
                 <button class="btn btn-secondary btn-secondary-ghost" onclick="closeProgressModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="confirmProgressModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PPT Mixed Export Modal -->
+    <div class="modal-backdrop" id="pptMixedModal" style="display:none">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pptMixedTitle" style="min-width:360px;max-width:500px;">
+            <h3 id="pptMixedTitle">Export to PowerPoint</h3>
+            <p style="font-size:13px;color:#555;margin:-4px 0 10px;">Choose which groups show their tasks. Unchecked groups appear as a single summary bar.</p>
+            <div style="display:flex;gap:10px;margin-bottom:10px;">
+                <button class="btn btn-secondary btn-secondary-ghost" style="font-size:12px;padding:4px 10px;" onclick="setPptMixedAll(true)">Select All</button>
+                <button class="btn btn-secondary btn-secondary-ghost" style="font-size:12px;padding:4px 10px;" onclick="setPptMixedAll(false)">Deselect All</button>
+            </div>
+            <div id="pptMixedGroupList" style="max-height:320px;overflow-y:auto;display:grid;gap:6px;padding:2px 0 4px;border-top:1px solid #e1e8ed;margin-bottom:4px;padding-top:10px;"></div>
+            <div class="actions">
+                <button class="btn btn-secondary btn-secondary-ghost" onclick="document.getElementById('pptMixedModal').style.display='none'">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmPptMixedExport()">Export</button>
             </div>
         </div>
     </div>

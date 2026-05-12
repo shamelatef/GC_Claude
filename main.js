@@ -3595,3 +3595,43 @@ function duplicateProject(index) {
     markAsChanged();
     if (typeof showNotification === 'function') showNotification(`Duplicated project as "${name}"`, 'success');
 }
+
+// ── PPT Mixed Export ──────────────────────────────────────────────────────────
+function openPptMixedModal() {
+    const list = document.getElementById('pptMixedGroupList');
+    if (!list) return;
+    list.innerHTML = '';
+    (groupOrder.length ? groupOrder : Object.keys(groups)).forEach(g => {
+        const id = `pptmix_${CSS.escape(g)}`;
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;padding:4px 2px;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.dataset.group = g;
+        cb.id = id;
+        cb.style.cssText = 'width:16px;height:16px;cursor:pointer;accent-color:#667eea;';
+        const dot = document.createElement('span');
+        dot.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;background:${groups[g]?.color || '#808080'};flex-shrink:0;`;
+        const text = document.createElement('span');
+        text.textContent = g;
+        row.appendChild(cb);
+        row.appendChild(dot);
+        row.appendChild(text);
+        list.appendChild(row);
+    });
+    document.getElementById('pptMixedModal').style.display = 'flex';
+}
+
+function setPptMixedAll(checked) {
+    document.querySelectorAll('#pptMixedGroupList input[type=checkbox]').forEach(cb => cb.checked = checked);
+}
+
+function confirmPptMixedExport() {
+    const expanded = new Set();
+    document.querySelectorAll('#pptMixedGroupList input[type=checkbox]').forEach(cb => {
+        if (cb.checked) expanded.add(cb.dataset.group);
+    });
+    document.getElementById('pptMixedModal').style.display = 'none';
+    exportToPPT('mixed', expanded);
+}

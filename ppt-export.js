@@ -19,9 +19,10 @@
  *
  * mode === 'groups-and-tasks'  →  compact group headers + task chevrons
  * mode === 'groups-only'       →  one summary chevron per group
+ * mode === 'mixed'             →  expanded groups show tasks; others show summary bar
  */
-function exportToPPT(mode) {
-    const VALID = ['groups-and-tasks', 'groups-only'];
+function exportToPPT(mode, expandedGroups) {
+    const VALID = ['groups-and-tasks', 'groups-only', 'mixed'];
     if (!VALID.includes(mode)) mode = 'groups-and-tasks';
 
     if (!tasks || tasks.length === 0) {
@@ -816,7 +817,13 @@ function exportToPPT(mode) {
         return;
     }
 
-    // ── groups-and-tasks ──────────────────────────────────────────────────
+    // ── mixed / groups-and-tasks ──────────────────────────────────────────
+    // For 'mixed': groups in expandedGroups show header + tasks; others show summary bar.
+    // For 'groups-and-tasks': all groups are expanded (expandedGroups = all).
+    const effectiveExpanded = mode === 'mixed'
+        ? (expandedGroups instanceof Set ? expandedGroups : new Set())
+        : new Set(ordered);   // all expanded for groups-and-tasks
+
     const allRows = [];
     ordered.forEach(g => {
         const gTasks = tasks.filter(t => t.group === g);
@@ -824,8 +831,15 @@ function exportToPPT(mode) {
         const dates  = gTasks.flatMap(t => [ymd(t.startDate), ymd(t.endDate)]).filter(Boolean);
         const gStart = dates.length ? new Date(Math.min(...dates)) : null;
         const gEnd   = dates.length ? new Date(Math.max(...dates)) : null;
-        allRows.push({ type:'group', group:g, count:gTasks.length, gStart, gEnd, rowH:GRP_H });
-        gTasks.forEach(t => allRows.push({ type:'task', task:t, group:g, rowH:taskRowH(t) }));
+        if (!gStart || !gEnd) return;
+
+        if (effectiveExpanded.has(g)) {
+            allRows.push({ type:'group', group:g, count:gTasks.length, gStart, gEnd, rowH:GRP_H });
+            gTasks.forEach(t => allRows.push({ type:'task', task:t, group:g, rowH:taskRowH(t) }));
+        } else {
+            allRows.push({ type:'group-summary', group:g, count:gTasks.length, gStart, gEnd,
+                           rowH:groupOnlyRowH(g, gTasks.length) });
+        }
     });
 
     paginate(allRows).forEach((rows, pi, pages) => {
@@ -833,13 +847,15 @@ function exportToPPT(mode) {
         chrome(slide, pages.length > 1 ? `Page ${pi+1} / ${pages.length}` : '');
         let y = CONTENT_TOP;
         rows.forEach(r => {
-            if (r.type === 'group') drawGroupHeader(slide, r, y, r.rowH);
-            else                    drawTaskRow(slide, r, y, r.rowH);
+            if      (r.type === 'group')         drawGroupHeader(slide, r, y, r.rowH);
+            else if (r.type === 'group-summary')  drawGroupOnlyRow(slide, r, y, r.rowH);
+            else                                  drawTaskRow(slide, r, y, r.rowH);
             y += r.rowH;
         });
     });
 
-    pptx.writeFile({ fileName:`${safeName}_groups-and-tasks_${dateStamp}.pptx` })
+    const fileSuffix = mode === 'mixed' ? 'mixed' : 'groups-and-tasks';
+    pptx.writeFile({ fileName:`${safeName}_${fileSuffix}_${dateStamp}.pptx` })
         .then(() => showNotification('PPTX exported', 'success'))
         .catch(err => { console.error(err); showNotification('PPTX export failed', 'error'); });
 }
