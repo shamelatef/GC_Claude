@@ -177,8 +177,9 @@ function deriveGroupStatusFromTasks(groupName) {
     if (statuses.has('Action Needed'))  return 'Action Needed';
     if (statuses.has('Delayed'))        return 'Delayed';
     if (statuses.has('In Progress'))    return 'In Progress';
-    const allCompleted = groupTasks.every(t => (t.status || 'Not Started') === 'Completed');
-    return allCompleted ? 'Completed' : 'Not Started';
+    if (statuses.has('Completed') && statuses.has('Not Started')) return 'In Progress';
+    if (statuses.has('Completed') && statuses.size === 1)         return 'Completed';
+    return 'Not Started';
 }
 
 function applyAutoGroupStatus(groupName, { notify = false } = {}) {
