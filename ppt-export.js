@@ -599,7 +599,7 @@ function exportToPPT(mode) {
         const ch     = Math.max(0.20, h - TASK_GAP);
         const barH   = Math.min(0.26, ch * 0.66);
         const barY   = y + (ch - barH) / 2;
-        const display = (t.name || '').toUpperCase();
+        const display = taskDisplayName(t.name);
 
         slide.addText(display, {
             x:GRP_TEXT_X, y, w:TX - GRP_TEXT_X, h:ch,
@@ -697,14 +697,27 @@ function exportToPPT(mode) {
     // ══════════════════════════════════════════════════════════════════════
     // PAGINATION + RENDER
     // ══════════════════════════════════════════════════════════════════════
-    const TASK_GAP = 0.18;   // vertical whitespace added below each task (~2 blank lines at 10pt)
+    const TASK_GAP    = 0.14;   // whitespace below each task row
+    const TASK_MAX_LINES = 2;   // never let a task name exceed 2 lines in the PPT
+
+    // Truncate a display name to fit within TASK_MAX_LINES of the name column.
+    // Returns the (possibly truncated) uppercase string.
+    function taskDisplayName(name) {
+        const colW  = TX - GRP_TEXT_X;
+        const upper = (name || '').toUpperCase();
+        // Estimate how many chars fit per line
+        const cpl   = Math.max(1, Math.floor(colW / (TASK_FS * 0.0061)));
+        const limit = cpl * TASK_MAX_LINES;
+        if (upper.length <= limit) return upper;
+        return upper.slice(0, limit - 2).trimEnd() + '..';
+    }
 
     function taskRowH(t) {
-        // Estimate lines needed, allocate content height, then add the inter-task gap.
         const colW    = TX - GRP_TEXT_X;
-        const lines   = Math.max(1, Math.ceil(estW((t.name || '').toUpperCase(), TASK_FS) / colW));
-        const content = Math.min(lines * 0.20 + 0.20, 0.90);   // text + bar zone
-        return content + TASK_GAP;                               // + gap below
+        const display = taskDisplayName(t.name);
+        const lines   = Math.min(TASK_MAX_LINES,
+                            Math.max(1, Math.ceil(estW(display, TASK_FS) / colW)));
+        return lines * 0.20 + 0.20 + TASK_GAP;   // content + gap
     }
 
     function groupOnlyRowH(g, count) {
