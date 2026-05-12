@@ -595,15 +595,14 @@ function exportToPPT(mode) {
         if (x1 === null || x2 === null) return;
         const bw     = Math.max(0, x2 - x1);
         const isZero = bw < 0.04;
-        const barH   = Math.min(0.26, h * 0.66);
-        const barY   = y + (h - barH) / 2;
+        // Content zone = row height minus the inter-task gap at the bottom
+        const ch     = Math.max(0.20, h - TASK_GAP);
+        const barH   = Math.min(0.26, ch * 0.66);
+        const barY   = y + (ch - barH) / 2;
         const display = (t.name || '').toUpperCase();
 
-        // ── Name label — left-aligned from GRP_TEXT_X (same edge as group headers) ──
-        // Width = full name column (GRP_TEXT_X → TX); text wraps to a 2nd line when long.
-        // taskRowH() pre-allocates TASK_H_2 for long names so the chevron stays centred.
         slide.addText(display, {
-            x:GRP_TEXT_X, y, w:TX - GRP_TEXT_X, h,
+            x:GRP_TEXT_X, y, w:TX - GRP_TEXT_X, h:ch,
             fontSize:TASK_FS, bold:true, color:C.ink,
             fontFace:'Segoe UI', align:'left', valign:'middle',
             wrap:true
@@ -698,11 +697,14 @@ function exportToPPT(mode) {
     // ══════════════════════════════════════════════════════════════════════
     // PAGINATION + RENDER
     // ══════════════════════════════════════════════════════════════════════
+    const TASK_GAP = 0.18;   // vertical whitespace added below each task (~2 blank lines at 10pt)
+
     function taskRowH(t) {
-        // Estimate lines needed, then allocate height proportionally (same logic as groupOnlyRowH).
-        const colW  = TX - GRP_TEXT_X;
-        const lines = Math.max(1, Math.ceil(estW((t.name || '').toUpperCase(), TASK_FS) / colW));
-        return Math.min(lines * 0.20 + 0.20, 1.00);   // ~0.40" per line, cap at 1.00"
+        // Estimate lines needed, allocate content height, then add the inter-task gap.
+        const colW    = TX - GRP_TEXT_X;
+        const lines   = Math.max(1, Math.ceil(estW((t.name || '').toUpperCase(), TASK_FS) / colW));
+        const content = Math.min(lines * 0.20 + 0.20, 0.90);   // text + bar zone
+        return content + TASK_GAP;                               // + gap below
     }
 
     function groupOnlyRowH(g, count) {
