@@ -21,7 +21,7 @@
  * mode === 'groups-only'       →  one summary chevron per group
  * mode === 'mixed'             →  expanded groups show tasks; others show summary bar
  */
-function exportToPPT(mode, expandedGroups) {
+function exportToPPT(mode, expandedGroups, selectedGroups) {
     const VALID = ['groups-and-tasks', 'groups-only', 'mixed'];
     if (!VALID.includes(mode)) mode = 'groups-and-tasks';
 
@@ -256,7 +256,8 @@ function exportToPPT(mode, expandedGroups) {
 
     // ── Ordered groups ─────────────────────────────────────────────────────
     const ordered = (groupOrder.length ? groupOrder : Object.keys(groups))
-        .filter(g => tasks.some(t => t.group === g));
+        .filter(g => tasks.some(t => t.group === g))
+        .filter(g => !(selectedGroups instanceof Set) || selectedGroups.has(g));
 
     // ══════════════════════════════════════════════════════════════════════
     // CHROME

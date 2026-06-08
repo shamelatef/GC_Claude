@@ -3655,3 +3655,47 @@ function confirmPptMixedExport() {
     document.getElementById('pptMixedModal').style.display = 'none';
     exportToPPT('mixed', expanded);
 }
+
+// ── PPT Groups-Only Export ────────────────────────────────────────────────────
+function openPptGroupsOnlyModal() {
+    const list = document.getElementById('pptGroupsOnlyGroupList');
+    if (!list) return;
+    list.innerHTML = '';
+    (groupOrder.length ? groupOrder : Object.keys(groups)).forEach(g => {
+        const id = `pptgo_${CSS.escape(g)}`;
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;padding:4px 2px;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.dataset.group = g;
+        cb.id = id;
+        cb.style.cssText = 'width:16px;height:16px;cursor:pointer;accent-color:#667eea;';
+        const dot = document.createElement('span');
+        dot.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:50%;background:${groups[g]?.color || '#808080'};flex-shrink:0;`;
+        const text = document.createElement('span');
+        text.textContent = g;
+        row.appendChild(cb);
+        row.appendChild(dot);
+        row.appendChild(text);
+        list.appendChild(row);
+    });
+    document.getElementById('pptGroupsOnlyModal').style.display = 'flex';
+}
+
+function setPptGroupsOnlyAll(checked) {
+    document.querySelectorAll('#pptGroupsOnlyGroupList input[type=checkbox]').forEach(cb => cb.checked = checked);
+}
+
+function confirmPptGroupsOnlyExport() {
+    const selected = new Set();
+    document.querySelectorAll('#pptGroupsOnlyGroupList input[type=checkbox]').forEach(cb => {
+        if (cb.checked) selected.add(cb.dataset.group);
+    });
+    if (!selected.size) {
+        showNotification('Select at least one group', 'error');
+        return;
+    }
+    document.getElementById('pptGroupsOnlyModal').style.display = 'none';
+    exportToPPT('groups-only', null, selected);
+}
